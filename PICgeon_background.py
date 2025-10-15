@@ -18,6 +18,8 @@ bg_far_speed = 1      # couche arrière (lente)
 bg_near_speed = 2     # couche avant (rapide)
 
 # === VARIABLES DU JEU ===
+VITESSE = 1500  # ms entre chaque apparition de tuyau
+""" A MODIF POUR DIFFICULTE --> Sur des switchs sur la carte"""
 bird_x = 80
 bird_y = HEIGHT // 2
 bird_velocity = 0
@@ -31,7 +33,11 @@ game_active = True
 # === COULEURS ===
 SKY = (135, 206, 250)
 GROUND = (139, 69, 19)
-PIPE_GREEN = (0, 180, 0)
+PIPE_BORDER_RED = (240, 80, 30)
+PIPE_BORDER_OUTLINE = (160, 30, 0)
+PIPE_RED = (220, 70, 30)
+PIPE_BORDER = (160, 30, 0)
+
 BIRD_BODY = (255, 255, 0)
 BIRD_BEAK = (255, 120, 0)
 BIRD_EYE = (255, 255, 255)
@@ -43,11 +49,12 @@ MOUNTAIN_COLOR = (60, 180, 75)
 TREE_COLOR = (0, 100, 0)
 TRUNK_COLOR = (101, 67, 33)
 CLOUD_COLOR = (255, 255, 255)
+BLACK = (0, 0, 0)
 
 # === FONCTIONS ===
 def create_pipe():
     """Crée un tuyau aléatoire."""
-    height = random.randint(150, 400)
+    height = random.randint(150, 430)
     return {"x": WIDTH, "height": height}
 
 def move_pipes(pipes):
@@ -60,15 +67,20 @@ def draw_pipes(pipes):
     """Dessine les tuyaux verts."""
     for p in pipes:
         #Tube
-        pygame.draw.rect(screen, PIPE_GREEN, (p["x"]+7, p["height"], 56, HEIGHT - p["height"]))
-        pygame.draw.rect(screen, PIPE_GREEN, (p["x"]+7, 0, 56, p["height"] - pipe_gap))
+        pygame.draw.rect(screen, PIPE_RED, (p["x"]+7, p["height"], 56, HEIGHT - p["height"]))
+        pygame.draw.rect(screen, PIPE_BORDER, (p["x"]+7, p["height"], 56, HEIGHT - p["height"]), 2)
+        pygame.draw.rect(screen, PIPE_RED, (p["x"]+7, 0, 56, p["height"] - pipe_gap))
+        pygame.draw.rect(screen, PIPE_BORDER, (p["x"]+7, 0, 56, p["height"] - pipe_gap), 2)
         #Haut du tuyau
-        pygame.draw.rect(screen, PIPE_GREEN, (p["x"], p["height"], 70, 30))
+        pygame.draw.rect(screen, PIPE_BORDER_RED, (p["x"], p["height"], 70, 30))
+        pygame.draw.rect(screen, PIPE_BORDER_OUTLINE, (p["x"], p["height"], 70, 30), 2)
+        pygame.draw.rect(screen, PIPE_BORDER_RED, (p["x"], (p["height"] - pipe_gap - 30), 70, 30))
+        pygame.draw.rect(screen, PIPE_BORDER_OUTLINE, (p["x"], (p["height"] - pipe_gap - 30), 70, 30), 2)
 
 def draw_bird(x, y, vel):
     """Dessine l'oiseau."""
     pygame.draw.circle(screen, BIRD_BODY, (int(x), int(y)), 15)
-    pygame.draw.polygon(screen, BIRD_BEAK, [(x+15, y), (x+25, y-5), (x+25, y+5)])
+    pygame.draw.polygon(screen, BIRD_BEAK, [(x+5, y), (x+15, y-5), (x+15, y+5)])
     pygame.draw.circle(screen, BIRD_EYE, (int(x+5), int(y-5)), 5)
     pygame.draw.circle(screen, BIRD_PUPIL, (int(x+5), int(y-5)), 2)
 
@@ -201,11 +213,14 @@ def draw_background(blocks):
         elif b["type"] == "empty":
             draw_empty(b["x"])
 
-# === ÉVÉNEMENTS CYCLIQUES ===
+""" === ÉVÉNEMENTS CYCLIQUES === """
+# Apparition des tuyaux
 SPAWNPIPE = pygame.USEREVENT
-pygame.time.set_timer(SPAWNPIPE, 1200)
+pygame.time.set_timer(SPAWNPIPE, VITESSE)
+# Apparition des blocs de décor loin
 SPAWNBG_FAR = pygame.USEREVENT + 1
-pygame.time.set_timer(SPAWNBG_FAR, 2500)
+pygame.time.set_timer(SPAWNBG_FAR, 2800)
+# Apparition des blocs de décor près
 SPAWNBG_NEAR = pygame.USEREVENT + 2
 pygame.time.set_timer(SPAWNBG_NEAR, 2000)
 
