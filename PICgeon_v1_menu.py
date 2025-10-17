@@ -12,13 +12,13 @@ clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 32)
 
 """ ~~~~~~~~~~~~~~~~~~~~~ Chargement de l'image de l'oiseau ~~~~~~~~~~~~~~~~~~~~~ """
-bird_img = pygame.image.load("flappybird.png").convert_alpha()
+bird_img = pygame.image.load("Sprites/flappybird.png").convert_alpha()
 bird_img = pygame.transform.scale(bird_img, (46, 36))  # taille ajustable
 
 """ ~~~~~~~~~~~~~~~~~~~~~ Images du menu ~~~~~~~~~~~~~~~~~~~~~ """
-logo_img = pygame.image.load("Logo.png").convert_alpha()
-play_img = pygame.image.load("Play.png").convert_alpha()
-score_img = pygame.image.load("Score.png").convert_alpha()
+logo_img = pygame.image.load("Sprites/Logo.png").convert_alpha()
+play_img = pygame.image.load("Sprites/Play.png").convert_alpha()
+score_img = pygame.image.load("Sprites/Score.png").convert_alpha()
 replay_img = pygame.Surface((60, 60))
 replay_img.fill((255, 255, 255))  # carré blanc pour Replay
 

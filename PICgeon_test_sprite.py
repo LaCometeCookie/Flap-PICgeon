@@ -13,7 +13,7 @@ clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 32)
 
 """ ~~~~~~~~~~~~~~~~~~~~~ Chargement de l'image de l'oiseau ~~~~~~~~~~~~~~~~~~~~~ """
-bird_img = pygame.image.load("flappybird.png").convert_alpha()
+bird_img = pygame.image.load("Sprites/flappybird.png").convert_alpha()
 bird_img = pygame.transform.scale(bird_img, (46, 36))  # taille ajustable
 
 
