@@ -22,9 +22,11 @@ pipe_speed = 3
 bg_far_speed = 1      # couche arrière (lente)
 bg_near_speed = 2     # couche avant (rapide)
 
+# Largeur logique du tuyau (utilisée pour dessin & score)
+PIPE_WIDTH = 70
+
 # === VARIABLES DU JEU ===
 VITESSE = 1200  # ms entre chaque apparition de tuyau
-""" A MODIF POUR DIFFICULTE --> Sur des switchs sur la carte"""
 bird_x = 80
 bird_y = HEIGHT // 2
 bird_velocity = 0
@@ -58,29 +60,30 @@ BLACK = (0, 0, 0)
 
 # === FONCTIONS ===
 def create_pipe():
-    """Crée un tuyau aléatoire."""
+    """Crée un tuyau aléatoire et initialise la clé 'scored' à False."""
     height = random.randint(170, 430)
-    return {"x": WIDTH, "height": height}
+    return {"x": WIDTH, "height": height, "scored": False}
 
 def move_pipes(pipes):
     """Déplace les tuyaux."""
     for p in pipes:
         p["x"] -= pipe_speed
-    return [p for p in pipes if p["x"] > -70]
+    return [p for p in pipes if p["x"] > -PIPE_WIDTH]
 
 def draw_pipes(pipes):
-    """Dessine les tuyaux verts."""
+    """Dessine les tuyaux."""
+
     for p in pipes:
-        #Tube
+        # On dessine le tube (intérieur) avec un léger offset comme dans ton code original
         pygame.draw.rect(screen, PIPE_RED, (p["x"]+7, p["height"], 56, HEIGHT - p["height"]))
         pygame.draw.rect(screen, PIPE_BORDER, (p["x"]+7, p["height"], 56, HEIGHT - p["height"]), 2)
         pygame.draw.rect(screen, PIPE_RED, (p["x"]+7, 0, 56, p["height"] - pipe_gap))
         pygame.draw.rect(screen, PIPE_BORDER, (p["x"]+7, 0, 56, p["height"] - pipe_gap), 2)
-        #Haut du tuyau
-        pygame.draw.rect(screen, PIPE_BORDER_RED, (p["x"], p["height"], 70, 30))
-        pygame.draw.rect(screen, PIPE_BORDER_OUTLINE, (p["x"], p["height"], 70, 30), 2)
-        pygame.draw.rect(screen, PIPE_BORDER_RED, (p["x"], (p["height"] - pipe_gap - 30), 70, 30))
-        pygame.draw.rect(screen, PIPE_BORDER_OUTLINE, (p["x"], (p["height"] - pipe_gap - 30), 70, 30), 2)
+        # Haut du tuyau (bords)
+        pygame.draw.rect(screen, PIPE_BORDER_RED, (p["x"], p["height"], PIPE_WIDTH, 30))
+        pygame.draw.rect(screen, PIPE_BORDER_OUTLINE, (p["x"], p["height"], PIPE_WIDTH, 30), 2)
+        pygame.draw.rect(screen, PIPE_BORDER_RED, (p["x"], (p["height"] - pipe_gap - 30), PIPE_WIDTH, 30))
+        pygame.draw.rect(screen, PIPE_BORDER_OUTLINE, (p["x"], (p["height"] - pipe_gap - 30), PIPE_WIDTH, 30), 2)
 
 bird_angle = 0.0  # angle initial de l'oiseau
 def draw_bird(x, y, vel):
@@ -101,8 +104,8 @@ def check_collision(pipes):
     bird_radius = 15
 
     for p in pipes:
-        top_rect = pygame.Rect(p["x"], 0, 70, p["height"] - pipe_gap)
-        bottom_rect = pygame.Rect(p["x"], p["height"], 70, HEIGHT - p["height"])
+        top_rect = pygame.Rect(p["x"], 0, PIPE_WIDTH, p["height"] - pipe_gap)
+        bottom_rect = pygame.Rect(p["x"], p["height"], PIPE_WIDTH, HEIGHT - p["height"])
 
         # collision avec les tuyaux (simple rect vs cercle)
         if circle_rect_collision(bird_center, bird_radius, top_rect) or \
@@ -117,10 +120,8 @@ def check_collision(pipes):
 def circle_rect_collision(circle_center, circle_radius, rect):
     """Renvoie True si un cercle touche un rectangle."""
     cx, cy = circle_center
-    # Trouver le point du rectangle le plus proche du centre du cercle
     closest_x = max(rect.left, min(cx, rect.right))
     closest_y = max(rect.top, min(cy, rect.bottom))
-    # Calculer la distance entre le centre du cercle et ce point
     dx = cx - closest_x
     dy = cy - closest_y
     return (dx * dx + dy * dy) < (circle_radius * circle_radius)
@@ -136,52 +137,34 @@ def display_score(score):
     screen.blit(text, (10, 10))
 
 # === DÉCOR GÉOMÉTRIQUE ===
-
 def create_background_block(layer="far"):
-    """Crée un bloc de décor pour la couche choisie."""
     if layer == "far":
         block_type = random.choice(["mountains", "city", "clouds", "mountain_tree", "clouds"])
     else:
         block_type = random.choice(["prairie", "mountain_tree", "mountains", "empty", "empty", "empty"])
-
     block = {"x": WIDTH, "type": block_type}
-
-    # On ajoute les hauteurs une seule fois pour la ville
     if block_type == "city":
         block["buildings"] = [random.randint(60, 120) for _ in range(3)]
-
     return block
 
 def move_background(blocks, speed):
-    """Fait défiler les blocs."""
     for b in blocks:
         b["x"] -= speed
     return [b for b in blocks if b["x"] > -200]
 
-# --- DESSIN DES BLOCS ---
 def draw_empty(x):
-    """Bloc vide — juste un espace neutre pour alléger le décor."""
-    pygame.draw.rect(screen, (100, 200, 100), (x, ground_y-5, 200, 5))  # fine bande d’herbe
+    pygame.draw.rect(screen, (100, 200, 100), (x, ground_y-5, 200, 5))
 
 def draw_mountains(x):
-    """
-    Dessine un bloc de 3 grandes montagnes élargies avec base verte
-    """
     base_y = ground_y
     mountain_width = 120
-    heights = [100, 140, 110]  # hauteur de chaque montagne
-
+    heights = [100, 140, 110]
     for i, h in enumerate(heights):
         start_x = x + i * (mountain_width - 20)
         peak_x = start_x + mountain_width // 2
         peak_y = base_y - h
         end_x = start_x + mountain_width
-
-        # --- Base verte ---
-        pygame.draw.polygon(
-            screen, (34, 139, 34),
-            [(start_x, base_y), (peak_x, peak_y + 20), (end_x, base_y)]
-        )
+        pygame.draw.polygon(screen, (34, 139, 34), [(start_x, base_y), (peak_x, peak_y + 20), (end_x, base_y)])
 
 def draw_mountain_tree(x):
     draw_mountains(x)
@@ -191,18 +174,12 @@ def draw_mountain_tree(x):
     pygame.draw.circle(screen, TREE_COLOR, (x + 120, ground_y - 40), 15)
 
 def draw_city(x, heights=None):
-    """Dessine un bloc de ville avec des immeubles fixes (hauteurs stables)."""
     if heights is None:
-        # Si aucune hauteur n'est passée, valeurs par défaut
         heights = [100, 100, 100]
-
     for i, height in enumerate(heights):
         bx = x + i * 50
-        # Contour noir
         pygame.draw.rect(screen, CITY_OUTLINE, (bx, ground_y - height, 40, height), 2)
-        # Corps gris
         pygame.draw.rect(screen, CITY_BODY, (bx + 2, ground_y - height + 2, 36, height - 4))
-        # Fenêtres
         for fx in range(bx + 6, bx + 35, 10):
             for fy in range(ground_y - height + 10, ground_y - 10, 20):
                 pygame.draw.rect(screen, CITY_OUTLINE, (fx, fy, 5, 5))
@@ -213,22 +190,14 @@ def draw_clouds(x):
     pygame.draw.circle(screen, CLOUD_COLOR, (x+50, 100), 20)
 
 def draw_prairie(x):
-    """Dessine une prairie avec une barrière en bois."""
-    # herbe
     pygame.draw.rect(screen, (80, 200, 80), (x, ground_y-10, 200, 20))
-
-    # barrière
-    wood_color = (139, 69, 19)  # brun bois
-    # poteaux verticaux
+    wood_color = (139, 69, 19)
     for i in range(x + 10, x + 190, 20):
         pygame.draw.rect(screen, wood_color, (i, ground_y - 25, 5, 15))
-    # traverses horizontales
     pygame.draw.rect(screen, wood_color, (x + 5, ground_y - 20, 190, 3))
     pygame.draw.rect(screen, wood_color, (x + 5, ground_y - 15, 190, 3))
 
-
 def draw_background(blocks):
-    """Dessine tous les blocs."""
     for b in blocks:
         if b["type"] == "mountains":
             draw_mountains(b["x"])
@@ -244,13 +213,10 @@ def draw_background(blocks):
             draw_empty(b["x"])
 
 """ === ÉVÉNEMENTS CYCLIQUES === """
-# Apparition des tuyaux
 SPAWNPIPE = pygame.USEREVENT
 pygame.time.set_timer(SPAWNPIPE, VITESSE)
-# Apparition des blocs de décor loin
 SPAWNBG_FAR = pygame.USEREVENT + 1
 pygame.time.set_timer(SPAWNBG_FAR, 2800)
-# Apparition des blocs de décor près
 SPAWNBG_NEAR = pygame.USEREVENT + 2
 pygame.time.set_timer(SPAWNBG_NEAR, 2000)
 
@@ -287,9 +253,14 @@ while True:
         bg_far = move_background(bg_far, bg_far_speed)
         bg_near = move_background(bg_near, bg_near_speed)
         check_collision(pipes)
+        # --- nouvelle logique de score : robustement détecte le franchissement
         for p in pipes:
-            if p["x"] + 70 == bird_x:
-                score += 1
+            if not p.get("scored", False):
+                # on incrémente le score quand la bordure droite du tuyau est passée
+                # on utilise < et non == pour éviter les oublis dus aux sauts par pas
+                if (p["x"] + PIPE_WIDTH) < bird_x:
+                    score += 1
+                    p["scored"] = True
 
     # === DESSIN ===
     screen.fill(SKY)
