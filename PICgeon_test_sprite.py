@@ -1,6 +1,9 @@
 import pygame
 import random
 import sys
+#import serial
+#ser = serial.Serial('COM3', 9600, timeout=0.01)
+
 
 # === INITIALISATION ===
 pygame.init()
@@ -11,16 +14,16 @@ font = pygame.font.SysFont("Arial", 32)
 
 """ ~~~~~~~~~~~~~~~~~~~~~ Chargement de l'image de l'oiseau ~~~~~~~~~~~~~~~~~~~~~ """
 bird_img = pygame.image.load("flappybird.png").convert_alpha()
-bird_img = pygame.transform.scale(bird_img, (40, 30))  # taille ajustable
+bird_img = pygame.transform.scale(bird_img, (46, 36))  # taille ajustable
 
 
 # === CONSTANTES PHYSIQUES ===
 gravity = 0.25
 flap_strength = -6.5
-pipe_gap = 150
+pipe_gap = 150      # Espacement entre les tuyaux haut et bas
 pipe_speed = 3
-bg_far_speed = 1      # couche arrière (lente)
-bg_near_speed = 2     # couche avant (rapide)
+bg_far_speed = 1    # couche arrière (lente)
+bg_near_speed = 2   # couche avant (rapide)
 
 # Largeur logique du tuyau (utilisée pour dessin & score)
 PIPE_WIDTH = 70
@@ -58,6 +61,14 @@ TRUNK_COLOR = (101, 67, 33)
 CLOUD_COLOR = (255, 255, 255)
 BLACK = (0, 0, 0)
 
+"""def read_serial_input():
+    #--Lit les messages du microcontrôleur s’il y en a.
+    if ser.in_waiting > 0:  # des données sont dispo ?
+        line = ser.readline().decode(errors='ignore').strip()
+        return line
+    return None"""
+
+
 # === FONCTIONS ===
 def create_pipe():
     """Crée un tuyau aléatoire et initialise la clé 'scored' à False."""
@@ -88,9 +99,9 @@ def draw_pipes(pipes):
 bird_angle = 0.0  # angle initial de l'oiseau
 def draw_bird(x, y, vel):
     global bird_angle
-    target_angle = max(-25, min(vel * -4, 25))
+    target_angle = max(-60, min(vel * -4, 60))
     # interpolation douce entre l'angle actuel et la cible
-    bird_angle += (target_angle - bird_angle) * 0.1
+    bird_angle += (target_angle - bird_angle) * 0.2
 
     rotated_bird = pygame.transform.rotate(bird_img, bird_angle)
     rect = rotated_bird.get_rect(center=(x, y))
@@ -226,6 +237,7 @@ while True:
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
+        """~~~~~~~~~~~~~~~~~~ BARRE ESPACE INPUT ~~~~~~~~~~~~~~~~~~"""
         if event.type == pygame.KEYDOWN and game_active:
             if event.key == pygame.K_SPACE:
                 bird_velocity = flap_strength
@@ -244,6 +256,12 @@ while True:
             bg_far.append(create_background_block("far"))
         if event.type == SPAWNBG_NEAR:
             bg_near.append(create_background_block("near"))
+
+    # Ajouter ici les autres contrôles
+    # --- lecture du port série USB
+    #command = read_serial_input()
+    #if command == "FLAP" and game_active:
+    #    bird_velocity = flap_strength
 
     # === LOGIQUE DU JEU ===
     if game_active:
