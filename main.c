@@ -44,7 +44,7 @@ void __interrupt() mainISR (void)
 
         // Set our global C flag 'send_flap_command' to 1.
         // We access C variables from assembly by prefixing them with an underscore.
-        "bcf INTCON, 4\n"//Désactive les interruptions
+        "bcf INTCON, 4,c\n"//Désactive les interruptions
         "movlw   1\n"
         "movwf   _send_flap_command, c\n"
 
@@ -103,7 +103,8 @@ void main(void)
             // Reset the flag so we don't send again until the next press.
             send_flap_command = 0;
             
-             asm("bsf INTCON, 4\n");//Réactive l'interruption
+            asm("bcf INTCON,1,c");//Clear any latent interrupt 
+            asm("bsf INTCON, 4,c");//Réactive l'interruption
         }
 
         // Keep the USB services running (this handles TX/RX buffers)
