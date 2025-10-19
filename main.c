@@ -1,109 +1,113 @@
-#include "sysconfig.h"
+// --- Standard and Project Includes ---
 #include <xc.h>
-#include "main.h"
-#include "usb_cdc_lib.h"
+#include "sysconfig.h" // Assuming this contains your USB configuration
+#include "main.h"      // Assuming this is part of your project structure
+#include "usb_cdc_lib.h" // Your USB library
 
 #define _XTAL_FREQ 48000000 // System clock frequency for delays
 
+// --- Configuration Bits ---
+        
+#pragma config WDT = OFF        
+#pragma config MCLRE = ON       
+#pragma config DEBUG = OFF      
+#pragma config CPUDIV = OSC1_PLL2     
+#pragma config LVP = OFF        
+
+// --- Global Variables ---
+// 'volatile' is CRITICAL as this is modified in an interrupt.
+volatile static char send_flap_command = 0;  // Flag to signal main loop
+
 // --- Pin Definitions ---
-#define BUZZER_PIN      LATCbits.LATC2
-#define BUZZER_TRIS     TRISCbits.TRISC2
+#define BUTTON_PIN      PORTBbits.RB0
+#define BUTTON_TRIS     TRISBbits.TRISB0
 
-#define BUTTON_PIN      PORTAbits.RA1 // Using PORTA to read
-#define BUTTON_TRIS     TRISAbits.TRISA1
+/**
+ * @brief Main Interrupt Service Routine (ISR)
+ * This function handles both USB tasks and the external button press using assembly.
+ */
+void __interrupt() mainISR (void)
+{
+    // It's vital to service the USB tasks first.
+    processUSBTasks();
 
+    // ===================================================================
+    // === Check for our button press using INLINE ASSEMBLY            ===
+    // ===================================================================
+    asm(
+        // Check if the INT0 Interrupt Flag is set (INTCON, bit 1).
+        // If the flag is 0 (not our interrupt), skip the logic and jump to the end.
+        "btfss   INTCON, 1, c\n"
+        "goto    _END_OF_ISR_CHECK\n"
 
-//Variable statiques comme ça tous le monde y a accès 
-static char button_was_pressed = 0;
-static char process_button_press = 0;
+        // --- If we are here, the button interrupt occurred ---
 
+        // Set our global C flag 'send_flap_command' to 1.
+        // We access C variables from assembly by prefixing them with an underscore.
+        "bcf INTCON, 4\n"//Désactive les interruptions
+        "movlw   1\n"
+        "movwf   _send_flap_command, c\n"
 
+        // CRITICAL: Clear the interrupt flag to re-arm the interrupt for the next press.
+        "bcf     INTCON, 1, c\n"
+
+        "_END_OF_ISR_CHECK:\n"
+        // This label is the target for our GOTO. The ISR will exit from here.
+    );
+}
 
 void main(void) 
 {
     initUSBLib();
 
-
-    //Entrée numérique sur le port A
+    // --- Hardware Initialization ---
+    // Configure PORTA/B as digital I/O (important for PIC18)
     ADCON1 = 0x0F;
     CMCON = 0x07;
     
-    BUTTON_TRIS = 1;    // Set RA1 comme entrée
-    
-    // Enable interrupts so USB enumeration works
-    INTCONbits.GIEH = 1;
-    
+    // Set pin directions
+    BUTTON_TRIS = 1;      // Set RB0 as an input for the button
+
+    // --- Interrupt Configuration ---
+    INTCON2bits.INTEDG0 = 1; // Trigger on RISING edge (button press)
+    INTCONbits.INT0IE = 1;   // Enable the INT0 external interrupt
+    RCONbits.IPEN = 0;       // Disable interrupt priority (for simplicity)
+    INTCONbits.GIE = 1;      // Enable Global Interrupts
+
     while(1)
     {
-        process_button_press = 0; // Reset C flag
-
-        // ===================================================================
-        // === PART 1: Lecture des infos envoyées par le pc                ===
-        // ===================================================================
+        // === PART 1: Check for commands from the computer ===
         if(isUSBReady())
         {
             uint8_t numBytesRead;
             numBytesRead = getsUSBUSART(usbReadBuffer, sizeof(usbReadBuffer));
-
             if(numBytesRead > 0)
             {
-                char command = usbReadBuffer[0];
-                //Cas à changer plus tard pour savoir que faire en fonction de la commande
-                switch(command)
-                {
-                    case '2': BUZZER_PIN = 1; break;//A rajouter plus tard
-                    case '3': BUZZER_PIN = 0; break;//A rajouter plus tard
-                }
+                // You can add new command handling here if needed.
             }
         }
         
-        // ===================================================================
-        // === PART 2: Envoi des données (à partir du bouton ici)          ===
-        // ===================================================================
-
-        //Partie assembleur
-        asm(
-            // Check if the button is currently held down
-            "BTFSS   PORTA, 1 \n"            // Bit Test File (PORTA, bit 1), Skip if Set (if button is 1)
-            "GOTO    _button_is_released \n" // If button is 0, jump to release logic
-
-            // --- If we are here, the button pin is HIGH (1) ---
-
-            // Now, check if it was already pressed before
-            "MOVF    _button_was_pressed, W \n" // Move flag to W, sets Zero flag if W=0
-            "BNZ     _end_asm_check \n"      // Branch if Not Zero (if flag was 1, we're done)
+        // === PART 2: Check the flag set by our ISR ===
+        if (send_flap_command == 1)
+        {
+            // The assembly ISR told us the button was pressed.
             
-            // --- If we are here, it's a NEW button press ---
-            "MOVLW   1 \n"                   // Move Literal Value 1 into W
-            "MOVWF   _process_button_press \n"// Move W into our 'process_button_press' flag
-            "GOTO    _end_asm_check \n"      // We're done, jump to the end
-
-        "_button_is_released: \n" // Note the label and colon
-            // --- If we are here, the button pin is LOW (0) ---
-            "CLRF    _button_was_pressed \n" // Clear the main flag
-
-        "_end_asm_check: \n" // Note the label and colon
-            // All assembly paths end here.
-        ); // --- End of the assembly block ---
-        
-        
-        // C code runs only if the assembly conditions were met
-        if(process_button_press == 1){
-            __delay_ms(20); // Debounce
-            if (BUTTON_PIN == 1) // Re-check pin after debounce
-            {
-                putUSBUSART("4", 1); // Send "4" AND a newline
-                button_was_pressed = 1; // Set the flag
-            }
+            // A small delay helps prevent sending multiple messages if the
+            // button is held down or bounces slightly.
+            __delay_ms(100); 
+            
+            // Since the hardware interrupt already confirmed a rising edge,
+            // we can trust that a press occurred and send the data directly.
+            putUSBUSART("4", 1); // Send "4" over USB
+            
+            // Reset the flag so we don't send again until the next press.
+            send_flap_command = 0;
+            
+             asm("bsf INTCON, 4\n");//Réactive l'interruption
         }
-        
-        // Keep the USB services running
+
+        // Keep the USB services running (this handles TX/RX buffers)
         CDCTxService();
     }
     return;
-}
-
-void __interrupt() mainISR (void)
-{
-    processUSBTasks();
 }
