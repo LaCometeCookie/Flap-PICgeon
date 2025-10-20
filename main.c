@@ -1,26 +1,25 @@
-// --- Standard and Project Includes ---
-#include <xc.h>
-#include "sysconfig.h" // Assuming this contains your USB configuration
-#include "main.h"      // Assuming this is part of your project structure
+// --Project Inclusions
+//USB
 #include "usb_cdc_lib.h" // Your USB library
 
-#define _XTAL_FREQ 48000000 // System clock frequency for delays
 
-// --- Configuration Bits ---
-        
+//Macros, definitions .....
+#include "main.h"      // Our header with 'bool' defined
+
+
+
+
+//--- Configuration ---
+#include "sysconfig.h" // Assuming this contains your USB configuration
 #pragma config WDT = OFF        
 #pragma config MCLRE = ON       
 #pragma config DEBUG = OFF      
 #pragma config CPUDIV = OSC1_PLL2     
 #pragma config LVP = OFF        
 
-// --- Global Variables ---
-// 'volatile' is CRITICAL as this is modified in an interrupt.
-volatile static char send_flap_command = 0;  // Flag to signal main loop
 
-// --- Pin Definitions ---
-#define BUTTON_PIN      PORTBbits.RB0
-#define BUTTON_TRIS     TRISBbits.TRISB0
+// --- Global Variables ---
+volatile static bool send_flap_command = false;  // Flag to signal main loop
 
 /**
  * @brief Main Interrupt Service Routine (ISR)
@@ -42,13 +41,14 @@ void __interrupt() mainISR (void)
 
         // --- If we are here, the button interrupt occurred ---
 
-        // Set our global C flag 'send_flap_command' to 1.
-        // We access C variables from assembly by prefixing them with an underscore.
-        "bcf INTCON, 4,c\n"//Désactive les interruptions
+        // This disables the INT0 Interrupt Enable bit (INTCON, 4)
+        "bcf     INTCON, 4, c\n" 
+        
+        // Set our global flag 'send_flap_command' to 1 (which equals 'true')
         "movlw   1\n"
         "movwf   _send_flap_command, c\n"
 
-        // CRITICAL: Clear the interrupt flag to re-arm the interrupt for the next press.
+        // CRITICAL: Clear the interrupt flag.
         "bcf     INTCON, 1, c\n"
 
         "_END_OF_ISR_CHECK:\n"
@@ -88,23 +88,24 @@ void main(void)
         }
         
         // === PART 2: Check the flag set by our ISR ===
-        if (send_flap_command == 1)
+        if (send_flap_command == true)
         {
             // The assembly ISR told us the button was pressed.
             
-            // A small delay helps prevent sending multiple messages if the
-            // button is held down or bounces slightly.
-            __delay_ms(100); 
+            // A small delay for debounce
+            __delay_ms(50); 
             
-            // Since the hardware interrupt already confirmed a rising edge,
-            // we can trust that a press occurred and send the data directly.
-            putUSBUSART("4", 1); // Send "4" over USB
+            // Send "4" over USB
+            putUSBUSART("4", 1); 
             
-            // Reset the flag so we don't send again until the next press.
-            send_flap_command = 0;
+            // Reset the flag
+            send_flap_command = false;
             
-            asm("bcf INTCON,1,c");//Clear any latent interrupt 
-            asm("bsf INTCON, 4,c");//Réactive l'interruption
+            // Clear any latent interrupt flag (safety)
+            asm("bcf INTCON, 1, c");
+            
+            // Re-enable the INT0 interrupt
+            asm("bsf INTCON, 4, c");
         }
 
         // Keep the USB services running (this handles TX/RX buffers)
