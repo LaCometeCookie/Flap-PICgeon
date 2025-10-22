@@ -1,16 +1,43 @@
 import pygame
 import random
 import sys
-import serial # <<< UNCOMMENTED
+import serial
+from serial.tools import list_ports
+
+
+compteur=0
+
 
 # --- Try to connect to the serial port ---
 # This will prevent the game from crashing if the PIC is not connected.
+# --- Try to connect to the serial port (auto-detect by description only) ---
+ser = None
+DeviceRecherched = "périphérique série usb"  # match is case-insensitive
+
 try:
-    ser = serial.Serial('COM4', 9600, timeout=0.01) # <<< UNCOMMENTED
-    print("Successfully connected to COM3.")
-except serial.SerialException:
-    print("Could not open COM3. Game will run without PIC controller.")
-    ser = None # Set ser to None so we can check if it's available
+    # Gather the ports that matches devices recherched
+    matches = []
+    for ports in list_ports.comports():
+        description = (ports.description or "").lower()
+        if DeviceRecherched in description:
+            matches.append(ports)
+
+    # If we found at least one match, open the first (sorted by device for stability)
+    if matches:
+        # optional: stable ordering if multiple
+        dev = matches[0].device
+        ser = serial.Serial(dev, 9600, timeout=0.01)
+        print(f"Successfully connected to {dev} ({matches[0].description}).")
+    else:
+        print("No 'Périphérique série USB' found. Game will run without PIC controller.")
+
+except serial.SerialException as e:
+    print(f"Could not open the detected COM port: {e}. Game will run without PIC controller.")
+    ser = None
+except Exception as e:
+    print(f"Serial init error: {e}. Game will run without PIC controller.")
+    ser = None
+
 
 # === INITIALISATION ===
 pygame.init()
@@ -20,13 +47,13 @@ clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 32)
 
 """ ~~~~~~~~~~~~~~~~~~~~~ Chargement de l'image de l'oiseau ~~~~~~~~~~~~~~~~~~~~~ """
-bird_img = pygame.image.load("flappybird.png").convert_alpha()
+bird_img = pygame.image.load("Sprites/flappybird.png").convert_alpha()
 bird_img = pygame.transform.scale(bird_img, (46, 36))  # taille ajustable
 
 """ ~~~~~~~~~~~~~~~~~~~~~ Images du menu ~~~~~~~~~~~~~~~~~~~~~ """
-logo_img = pygame.image.load("Logo.png").convert_alpha()
-play_img = pygame.image.load("Play.png").convert_alpha()
-score_img = pygame.image.load("Score.png").convert_alpha()
+logo_img = pygame.image.load("Sprites/Logo.png").convert_alpha()
+play_img = pygame.image.load("Sprites/Play.png").convert_alpha()
+score_img = pygame.image.load("Sprites/Score.png").convert_alpha()
 replay_img = pygame.Surface((60, 60))
 replay_img.fill((255, 255, 255))  # carré blanc pour Replay
 
@@ -38,7 +65,7 @@ score_img = pygame.transform.scale(score_img, (120, 60))
 # === CONSTANTES PHYSIQUES ===
 gravity = 0.25
 flap_strength = -6.5
-pipe_gap = 150
+pipe_gap = 170
 pipe_speed = 3
 bg_far_speed = 1
 bg_near_speed = 2
@@ -92,6 +119,39 @@ def read_serial_input():
         line = ser.readline().decode(errors='ignore').strip()
         return line
     return None
+
+
+# <<< NEW FUNCTION TO SEND SCORE TO PIC >>>
+def sendToPic(current_score):
+    """
+    Sends the score to the serial port as an ASCII string,
+    followed by a carriage return to un-block getsUSBUSART().
+    """
+    # Only try to send if the serial port was successfully opened
+    if ser:
+        try:
+            # Convert the score integer (e.g., 12) to a string ("12")
+            score_str = str(current_score)
+
+            # Add the carriage return character
+            message_str = score_str + '\r'
+
+            # Encode the final string into bytes that can be sent
+            message_bytes = message_str.encode('ascii')
+
+            # Send the message
+            ser.write(message_bytes)
+
+            # Optional: a print to confirm what was sent
+            print(f"Sent message to PIC: {message_bytes}")
+
+        except serial.SerialException as e:
+            # This can happen if the board is unplugged
+            print(f"Error writing to serial: {e}")
+
+
+
+
 
 # === FONCTIONS DU JEU ===
 def create_pipe():
@@ -253,6 +313,7 @@ def reset_game():
     bird_y = HEIGHT // 2
     bird_velocity = 0
     score = 0
+    sendToPic(score)
     game_active = True
 
 # === MENU ET ÉCRAN SCORE ===
@@ -295,6 +356,7 @@ while True:
             if game_state == STATE_GAME and game_active and event.key == pygame.K_SPACE:
                 bird_velocity = flap_strength
             elif game_state == STATE_GAME and not game_active and event.key == pygame.K_r:
+                compteur=0
                 # Retour au menu + sauvegarde score
                 if score > best_score:
                     best_score = score
@@ -326,6 +388,8 @@ while True:
     command = read_serial_input()
     # Check if the command is "4", the game is running, and the bird is alive
     if command == "4" and game_state == STATE_GAME and game_active:
+       compteur+=1
+       print("Up=",compteur)
        bird_velocity = flap_strength
 
 
@@ -338,11 +402,12 @@ while True:
         bg_near = move_background(bg_near, bg_near_speed)
         check_collision(pipes)
         # score
-        for p in pipes:
-            if not p.get("scored", False):
-                if (p["x"] + PIPE_WIDTH) < bird_x:
+        for ports in pipes:
+            if not ports.get("scored", False):
+                if (ports["x"] + PIPE_WIDTH) < bird_x:
                     score += 1
-                    p["scored"] = True
+                    ports["scored"] = True
+                    sendToPic(score)
 
     # === DESSIN SELON ÉTAT ===
     if game_state == STATE_MENU:
