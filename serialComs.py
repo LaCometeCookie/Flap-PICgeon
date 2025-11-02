@@ -1,6 +1,7 @@
 # Imports
 import serial
 from serial.tools import list_ports
+import time
 
 # --- Global Variables ---
 ser = None
@@ -33,6 +34,8 @@ def connect_to_serial_port():
             dev = matches[0].device
             ser = serial.Serial(dev, 9600, timeout=0.01)
             print(f"\n✅ Auto-Connection Successful: {dev} ({matches[0].description}).")
+            # Wait a moment for the PIC's USB to initialize before we continue
+            time.sleep(1)  # << Important for stability
             return
         else:
             # Case the auto-connection fails (No device found)
@@ -43,72 +46,51 @@ def connect_to_serial_port():
         print(f"\n❌ Auto-Connection Failed: {e}.")
 
     # --- Step 2: Manual Selection or Skip ---
-    # This part runs if auto-detection failed
-
     availablePorts = list_available_ports()  # Get the list of all the available ports
 
-    # Case no port available
     if not availablePorts:
         print("\n❌ No Ports detected. Game will be running without the PIC.")
         ser = None
         return
 
-    # Case at least one port is available
     print("\n--- Manual Port Selection ---")
     for i, (device, description) in enumerate(availablePorts):
         print(f"[{i + 1}]: {device} ({description})")
 
     while True:
-        # This is the new, simplified prompt
         prompt = f"\nEnter number (1-{len(availablePorts)}) or press [Enter] to play with keyboard: "
         userChoice = input(prompt).strip()
 
         if userChoice == "":
-            # User pressed Enter. This is the "skip" (play with space/keyboard)
             print("\n👍 Skipping manual setup. Game will run without PIC controller.")
             ser = None
             return
 
-        # If not "", try to parse it as a number.
         try:
             index = int(userChoice) - 1
             if 0 <= index < len(availablePorts):
                 selected_dev = availablePorts[index][0]
                 ser = serial.Serial(selected_dev, 9600, timeout=0.01)
                 print(f"\n✅ Manually Connected to {availablePorts[index][1]}.")
+                time.sleep(1)  # << Important for stability
                 return
             else:
                 print("Invalid number. Please try again.")
         except ValueError:
             print("Invalid input. Please enter a number or press Enter.")
         except serial.SerialException as e:
-            # This allows them to try another port if one fails
             print(f"❌ Could not open port {selected_dev}: {e}. Try another port or press Enter to skip.")
             ser = None
 
 
 def read_serial_input():
-    """Reads messages from the PIC if available."""
+    """Reads messages from the PIC if available. Returns one line."""
     if ser and ser.in_waiting > 0:
         line = ser.readline().decode(errors='ignore').strip()
-        return line
+        # Only return non-empty lines
+        if line:
+            return line
     return None
-
-
-def sendToPic(current_score):
-    """
-    Sends the score to the serial port as an ASCII string,
-    followed by a carriage return to un-block getsUSBUSART().
-    """
-    if ser:
-        try:
-            score_str = str(current_score)
-            message_str = score_str + '\r'
-            message_bytes = message_str.encode('ascii')
-            ser.write(message_bytes)
-            print(f"Sent message to PIC: {message_bytes}")
-        except serial.SerialException as e:
-            print(f"Error writing to serial: {e}")
 
 
 def close_serial():
@@ -116,3 +98,58 @@ def close_serial():
     if ser:
         ser.close()
         print("Serial port closed.")
+
+
+# ===================================================================
+# --- NEW PROTOCOL SENDER FUNCTIONS ---
+# ===================================================================
+
+def _send_command(command_str):
+    """
+    Private helper function to send a formatted command string to the PIC.
+    Ensures the message ends with \r\n (as \n is often used by Python).
+    """
+    if ser:
+        try:
+            # Ensure command ends with a single \r\n
+            message = command_str.strip() + '\r\n'
+            ser.write(message.encode('ascii'))
+            # print(f"PC -> PIC: {message.strip()}") # Uncomment for debugging
+        except serial.SerialException as e:
+            print(f"Error writing to serial: {e}")
+
+
+def send_live_score(score):
+    """CC:S,<n> - Send the live score to the PIC for display."""
+    _send_command(f"CC:S,{score}")
+
+
+def send_game_over():
+    """CC:GO,1 - Tell the PIC the game is over and to check/save the best score."""
+    _send_command("CC:GO,1")
+
+
+def send_select_slot(slot_id):
+    """CC:SEL,<id> - Tell the PIC to change the active score slot."""
+    if 0 <= slot_id <= 3:
+        _send_command(f"CC:SEL,{slot_id}")
+
+
+def send_request_best():
+    """CC:RB - Ask the PIC to send its current best score for the active slot."""
+    _send_command("CC:RB")
+
+
+def send_angle(angle):
+    """CC:A,<deg> - Send an angle (0-180) to the PIC."""
+    _send_command(f"CC:A,{angle}")
+
+
+def send_ping():
+    """CC:PING - Send a ping to see if the card is responsive."""
+    _send_command("CC:PING")
+
+
+def send_calibrate():
+    """CC:CAL - Tell the PIC to run its calibration routine."""
+    _send_command("CC:CAL")
