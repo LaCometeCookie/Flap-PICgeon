@@ -1,53 +1,47 @@
 import pygame
 import random
 import sys
-import serial
 from enum import Enum
+import serialComs as sc  # <<< IMPORT YOUR NEW SERIAL FILE
 
 
-# --- NEW: Define Game States using Enum ---
+# --- Define Game States using Enum ---
 class GameState(Enum):
     MENU = "menu"
     GAME = "game"
     SCORE_SCREEN = "score_screen"
 
 
-# --- Try to connect to the serial port ---
-# ... (Serial connection logic remains the same)
-try:
-    ser = serial.Serial('COM4', 9600, timeout=0.01)
-    print("Successfully connected to COM3.")
-except serial.SerialException:
-    print("Could not open COM3. Game will run without PIC controller.")
-    ser = None
+# === 1. SERIAL CONNECTION (Happens FIRST) ===
+# This will run the interactive CLI prompt before Pygame starts
+sc.connect_to_serial_port()
 
-# === INITIALISATION ===
+# === 2. INITIALISATION ===
 pygame.init()
 WIDTH, HEIGHT = 600, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Flap-PICGeon")
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 32)
+small_font = pygame.font.SysFont("Arial", 25)
+game_over_font = pygame.font.SysFont("Arial", 40)
 
-""" ~~~~~~~~~~~~~~~~~~~~~ Chargement de l'image de l'oiseau ~~~~~~~~~~~~~~~~~~~~~ """
+# === 3. ASSETS (Loaded AFTER display is set) ===
 bird_img = pygame.image.load("Sprites/flappybird.png").convert_alpha()
-bird_img = pygame.transform.scale(bird_img, (46, 36))  # taille ajustable
-
-""" ~~~~~~~~~~~~~~~~~~~~~ Images du menu ~~~~~~~~~~~~~~~~~~~~~ """
+bird_img = pygame.transform.scale(bird_img, (46, 36))
 logo_img = pygame.image.load("Sprites/Logo.png").convert_alpha()
-play_img = pygame.image.load("Sprites/Play.png").convert_alpha()
-score_img = pygame.image.load("Sprites/Score.png").convert_alpha()
-replay_img = pygame.Surface((60, 60))
-replay_img.fill((255, 255, 255))  # carré blanc pour Replay
-
-# redimensionnement des éléments du menu
 logo_img = pygame.transform.scale(logo_img, (250, 100))
+play_img = pygame.image.load("Sprites/Play.png").convert_alpha()
 play_img = pygame.transform.scale(play_img, (120, 60))
+score_img = pygame.image.load("Sprites/Score.png").convert_alpha()
 score_img = pygame.transform.scale(score_img, (120, 60))
+replay_img = pygame.Surface((60, 60))
+replay_img.fill((255, 255, 255))
 
 # === CONSTANTES PHYSIQUES ===
 gravity = 0.25
 flap_strength = -6.5
-pipe_gap = 150
+pipe_gap = 170
 pipe_speed = 3
 bg_far_speed = 1
 bg_near_speed = 2
@@ -65,6 +59,8 @@ score = 0
 best_score = 0
 ground_y = HEIGHT - 80
 game_active = True
+bird_angle = 0.0
+compteur = 0  # Your counter variable
 
 # === COULEURS ===
 SKY = (135, 206, 250)
@@ -73,11 +69,6 @@ PIPE_BORDER_RED = (240, 80, 30)
 PIPE_BORDER_OUTLINE = (160, 30, 0)
 PIPE_RED = (220, 70, 30)
 PIPE_BORDER = (160, 30, 0)
-
-BIRD_BODY = (255, 255, 0)
-BIRD_BEAK = (255, 120, 0)
-BIRD_EYE = (255, 255, 255)
-BIRD_PUPIL = (0, 0, 0)
 TEXT_COLOR = (255, 255, 255)
 CITY_OUTLINE = (0, 0, 0)
 CITY_BODY = (100, 100, 100)
@@ -88,86 +79,59 @@ CLOUD_COLOR = (255, 255, 255)
 BLACK = (0, 0, 0)
 
 # === ÉTATS DU JEU ===
-# OLD STATE STRINGS REMOVED
-game_state = GameState.MENU  # <<< NEW: Use Enum for initial state
-
-
-# <<< FUNCTION TO READ FROM PIC (UNCOMMENTED)
-def read_serial_input():
-    """Reads messages from the microcontroller if available."""
-    # Only try to read if the serial port was successfully opened
-    if ser and ser.in_waiting > 0:
-        line = ser.readline().decode(errors='ignore').strip()
-        return line
-    return None
+game_state = GameState.MENU
 
 
 # === FONCTIONS DU JEU ===
 def create_pipe():
-    """Crée un tuyau aléatoire et initialise la clé 'scored' à False."""
     height = random.randint(170, 430)
     return {"x": WIDTH, "height": height, "scored": False}
 
 
-def move_pipes(pipes):
-    """Déplace les tuyaux."""
-    for p in pipes:
+def move_pipes(pipes_list):
+    for p in pipes_list:
         p["x"] -= pipe_speed
-    return [p for p in pipes if p["x"] > -PIPE_WIDTH]
+    return [p for p in pipes_list if p["x"] > -PIPE_WIDTH]
 
 
-def draw_pipes(pipes):
-    """Dessine les tuyaux."""
-
-    for p in pipes:
-        # On dessine le tube (intérieur) avec un léger offset comme dans ton code original
+def draw_pipes(pipes_list):
+    for p in pipes_list:
         pygame.draw.rect(screen, PIPE_RED, (p["x"] + 7, p["height"], 56, HEIGHT - p["height"]))
         pygame.draw.rect(screen, PIPE_BORDER, (p["x"] + 7, p["height"], 56, HEIGHT - p["height"]), 2)
         pygame.draw.rect(screen, PIPE_RED, (p["x"] + 7, 0, 56, p["height"] - pipe_gap))
         pygame.draw.rect(screen, PIPE_BORDER, (p["x"] + 7, 0, 56, p["height"] - pipe_gap), 2)
-        # Haut du tuyau (bords)
         pygame.draw.rect(screen, PIPE_BORDER_RED, (p["x"], p["height"], PIPE_WIDTH, 30))
         pygame.draw.rect(screen, PIPE_BORDER_OUTLINE, (p["x"], p["height"], PIPE_WIDTH, 30), 2)
         pygame.draw.rect(screen, PIPE_BORDER_RED, (p["x"], (p["height"] - pipe_gap - 30), PIPE_WIDTH, 30))
         pygame.draw.rect(screen, PIPE_BORDER_OUTLINE, (p["x"], (p["height"] - pipe_gap - 30), PIPE_WIDTH, 30), 2)
 
 
-bird_angle = 0.0  # angle initial de l'oiseau
-
-
 def draw_bird(x, y, vel):
     global bird_angle
     target_angle = max(-60, min(vel * -4, 60))
-    # interpolation douce entre l'angle actuel et la cible
     bird_angle += (target_angle - bird_angle) * 0.2
-
     rotated_bird = pygame.transform.rotate(bird_img, bird_angle)
     rect = rotated_bird.get_rect(center=(x, y))
     screen.blit(rotated_bird, rect)
 
 
-def check_collision(pipes):
+def check_collision(pipes_list):
     global game_active
-    # Hitbox circulaire de rayon 15 px
     bird_center = (bird_x, bird_y)
     bird_radius = 15
 
-    for p in pipes:
+    for p in pipes_list:
         top_rect = pygame.Rect(p["x"], 0, PIPE_WIDTH, p["height"] - pipe_gap)
         bottom_rect = pygame.Rect(p["x"], p["height"], PIPE_WIDTH, HEIGHT - p["height"])
-
-        # collision avec les tuyaux (simple rect vs cercle)
         if circle_rect_collision(bird_center, bird_radius, top_rect) or \
                 circle_rect_collision(bird_center, bird_radius, bottom_rect):
             game_active = False
 
-    # collision sol/plafond
     if bird_y + bird_radius >= ground_y or bird_y - bird_radius <= 0:
         game_active = False
 
 
 def circle_rect_collision(circle_center, circle_radius, rect):
-    """Renvoie True si un cercle touche un rectangle."""
     cx, cy = circle_center
     closest_x = max(rect.left, min(cx, rect.right))
     closest_y = max(rect.top, min(cy, rect.bottom))
@@ -177,13 +141,11 @@ def circle_rect_collision(circle_center, circle_radius, rect):
 
 
 def draw_ground():
-    """Dessine le sol."""
     pygame.draw.rect(screen, GROUND, (0, ground_y, WIDTH, HEIGHT - ground_y))
 
 
-def display_score(score):
-    """Affiche le score."""
-    text = font.render(f"Score: {score}", True, TEXT_COLOR)
+def display_score(current_score):
+    text = font.render(f"Score: {current_score}", True, TEXT_COLOR)
     screen.blit(text, (10, 10))
 
 
@@ -273,12 +235,16 @@ def draw_background(blocks):
 
 
 def reset_game():
-    global pipes, bird_y, bird_velocity, score, game_active
+    global pipes, bird_y, bird_velocity, score, game_active, bird_angle, compteur
     pipes = []
     bird_y = HEIGHT // 2
     bird_velocity = 0
     score = 0
+    bird_angle = 0.0
     game_active = True
+    compteur = 0  # Reset flap counter
+    # Send score 0 to PIC on reset
+    sc.sendToPic(score)  # <<< USES serial_comms
 
 
 # === MENU ET ÉCRAN SCORE ===
@@ -286,23 +252,24 @@ def draw_menu():
     screen.fill(SKY)
     screen.blit(logo_img, (WIDTH // 2 - logo_img.get_width() // 2, 50))
     screen.blit(bird_img, (WIDTH // 2 - bird_img.get_width() // 2, 200))
+
+    # Add text instruction for SPACE bar
+    start_text = small_font.render("Press SPACE to Start", True, BLACK)
+    screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, 300))
+
+    # Draw buttons and return their rects for collision
     play_rect = screen.blit(play_img, (WIDTH // 2 - 60, 350))
     score_rect = screen.blit(score_img, (WIDTH // 2 - 60, 420))
     replay_rect = screen.blit(replay_img, (WIDTH // 2 - 30, 500))
-
-    # NEW: Add text instruction for SPACE bar
-    start_text = pygame.font.SysFont("Arial", 25).render("Press SPACE to Start", True, BLACK)
-    screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, 300))
-
     return play_rect, score_rect, replay_rect
 
 
 def draw_score_screen():
     screen.fill(SKY)
-    display_text = pygame.font.SysFont("Arial", 40).render(f"Best Score: {best_score}", True, BLACK)
+    display_text = game_over_font.render(f"Best Score: {best_score}", True, BLACK)
     screen.blit(display_text,
                 (WIDTH // 2 - display_text.get_width() // 2, HEIGHT // 2 - display_text.get_height() // 2))
-    small_text = pygame.font.SysFont("Arial", 25).render("Press R to return", True, BLACK)
+    small_text = small_font.render("Press R to return", True, BLACK)
     screen.blit(small_text, (WIDTH // 2 - small_text.get_width() // 2, HEIGHT - 100))
 
 
@@ -316,88 +283,88 @@ pygame.time.set_timer(SPAWNBG_NEAR, 2000)
 
 # === BOUCLE PRINCIPALE ===
 while True:
+    # === EVENT HANDLING ===
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            if ser:  # Close the serial port on exit
-                ser.close()
+            sc.close_serial()  # <<< USES serial_comms
             pygame.quit()
             sys.exit()
 
         # === INPUT CLAVIER ===
         if event.type == pygame.KEYDOWN:
-            # NEW: START GAME from menu with SPACE
+            # Start game from menu
             if game_state == GameState.MENU and event.key == pygame.K_SPACE:
                 reset_game()
                 game_state = GameState.GAME
 
-            # NEW: FLAP
+            # Flap in-game
             elif game_state == GameState.GAME and game_active and event.key == pygame.K_SPACE:
                 bird_velocity = flap_strength
 
-            # NEW: RESTART GAME from game over with R
+            # Restart from game over
             elif game_state == GameState.GAME and not game_active and event.key == pygame.K_r:
                 if score > best_score:
                     best_score = score
-                reset_game()  # <<< NEW: Reset game directly
-                game_state = GameState.GAME  # <<< NEW: Stay in GAME state
+                reset_game()  # Reset game directly
+                game_state = GameState.GAME  # Stay in GAME state
 
-            # SCORE SCREEN return to MENU
+            # Return from score screen
             elif game_state == GameState.SCORE_SCREEN and event.key == pygame.K_r:
-                game_state = GameState.MENU  # <<< NEW: Use Enum
+                game_state = GameState.MENU
 
         # === INPUT SOURIS MENU ===
         if game_state == GameState.MENU and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = pygame.mouse.get_pos()
-            play_rect, score_rect, replay_rect = draw_menu()  # Need to call draw_menu to get rects for collision
+            # Must call draw_menu to get rects, even though it will be drawn again
+            play_rect, score_rect, _ = draw_menu()
+
             if play_rect.collidepoint(mx, my):
                 reset_game()
-                game_state = GameState.GAME  # <<< NEW: Use Enum
+                game_state = GameState.GAME
             elif score_rect.collidepoint(mx, my):
-                game_state = GameState.SCORE_SCREEN  # <<< NEW: Use Enum
-            elif replay_rect.collidepoint(mx, my):
-                pass  # rien pour l'instant
+                game_state = GameState.SCORE_SCREEN
 
-        # === SPAWN PIPE ===
-        if event.type == SPAWNPIPE and game_state == GameState.GAME and game_active:  # <<< NEW: Use Enum
+        # === SPAWN EVENTS ===
+        if event.type == SPAWNPIPE and game_state == GameState.GAME and game_active:
             pipes.append(create_pipe())
         if event.type == SPAWNBG_FAR:
             bg_far.append(create_background_block("far"))
         if event.type == SPAWNBG_NEAR:
             bg_near.append(create_background_block("near"))
 
-    # <<< READ FROM SERIAL PORT AND CHECK FOR COMMAND <<<
-    command = read_serial_input()
-    # Check if the command is "4", the game is running, and the bird is alive
-    if command == "4" and game_state == GameState.GAME and game_active:  # <<< NEW: Use Enum
+    # === SERIAL INPUT (PIC Controller) ===
+    command = sc.read_serial_input()  # <<< USES serial_comms
+    if command == "4" and game_state == GameState.GAME and game_active:
+        compteur += 1
+        print("Up=", compteur)
         bird_velocity = flap_strength
 
     # === LOGIQUE DU JEU ===
-    if game_state == GameState.GAME and game_active:  # <<< NEW: Use Enum
+    if game_state == GameState.GAME and game_active:
         bird_velocity += gravity
         bird_y += bird_velocity
         pipes = move_pipes(pipes)
         bg_far = move_background(bg_far, bg_far_speed)
         bg_near = move_background(bg_near, bg_near_speed)
         check_collision(pipes)
-        # score
-        for p in pipes:
+
+        # --- Update Score & Send to PIC ---
+        for p in pipes:  # Renamed 'ports' to 'p' to avoid confusion
             if not p.get("scored", False):
                 if (p["x"] + PIPE_WIDTH) < bird_x:
                     score += 1
                     p["scored"] = True
+                    sc.sendToPic(score)  # <<< USES serial_comms
 
     # === DESSIN SELON ÉTAT ===
-    if game_state == GameState.MENU:  # <<< NEW: Use Enum
+    if game_state == GameState.MENU:
         draw_menu()
-    elif game_state == GameState.SCORE_SCREEN:  # <<< NEW: Use Enum
+    elif game_state == GameState.SCORE_SCREEN:
         draw_score_screen()
-    elif game_state == GameState.GAME:  # <<< NEW: Use Enum
+    elif game_state == GameState.GAME:
         screen.fill(SKY)
-        # couche arrière (lente)
         draw_background(bg_far)
-        # couche avant (rapide)
         draw_background(bg_near)
-        # éléments de jeu
         draw_pipes(pipes)
         draw_ground()
         draw_bird(bird_x, bird_y, bird_velocity)
@@ -407,5 +374,6 @@ while True:
             over_text = font.render("Press R to restart", True, (255, 50, 50))
             screen.blit(over_text, (WIDTH // 2 - over_text.get_width() // 2, HEIGHT // 2))
 
+    # === UPDATE DISPLAY ===
     pygame.display.update()
     clock.tick(60)
