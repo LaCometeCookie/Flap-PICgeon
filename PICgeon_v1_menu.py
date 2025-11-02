@@ -23,7 +23,7 @@ replay_img = pygame.Surface((60, 60))
 replay_img.fill((255, 255, 255))  # carré blanc pour Replay
 
 # redimensionnement des éléments du menu
-logo_img = pygame.transform.scale(logo_img, (250, 100))
+logo_img = pygame.transform.scale(logo_img, (345, 72))
 play_img = pygame.transform.scale(play_img, (120, 60))
 score_img = pygame.transform.scale(score_img, (120, 60))
 
