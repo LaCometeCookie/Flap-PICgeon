@@ -149,6 +149,10 @@ def send_ping():
     """CC:PING - Send a ping to see if the card is responsive."""
     _send_command("CC:PING")
 
+def send_mode_select(mode_id):
+    """CC:MODE,<id> - Tell the PIC which input mode to use."""
+    _send_command(f"CC:MODE,{mode_id}")
+
 
 def send_calibrate():
     """CC:CAL - Tell the PIC to run its calibration routine."""

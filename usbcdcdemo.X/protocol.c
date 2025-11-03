@@ -7,6 +7,7 @@
 #include "display.h"    // To set the 7-segment display
 #include "eeprom.h"     // To read/write best scores
 #include "usb_cdc_lib.h"// For sending data
+#include "inputs.h"
 
 // --- Private Module Variables ---
 
@@ -126,6 +127,10 @@ static void s_ParseLine(char* line)
     else if (strncmp(line, "CC:RB", 5) == 0)
     {
         s_Handle_RB();
+    }
+    else if (strncmp(line, "CC:MODE,", 8) == 0)
+    {
+        g_ActiveInputMode = (uint8_t)strtol(&line[8], NULL, 10);
     }
 }
 

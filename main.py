@@ -2,7 +2,7 @@ import pygame
 import random
 import sys
 from enum import Enum
-import serialComs as sc  # <<< USES OUR UPDATED SERIAL FILE
+import serialComs as SC  # <<< USES OUR UPDATED SERIAL FILE
 
 
 # --- Define Game States using Enum ---
@@ -13,7 +13,7 @@ class GameState(Enum):
 
 
 # === 1. SERIAL CONNECTION (Happens FIRST) ===
-sc.connect_to_serial_port()
+SC.connect_to_serial_port()
 
 # === 2. INITIALISATION ===
 pygame.init()
@@ -59,7 +59,7 @@ best_score = 0
 ground_y = HEIGHT - 80
 game_active = True
 bird_angle = 0.0
-compteur = 0  # Your counter variable
+compteur = 0
 
 # === COULEURS ===
 SKY = (135, 206, 250)
@@ -69,11 +69,24 @@ PIPE_BORDER_OUTLINE = (160, 30, 0)
 PIPE_RED = (220, 70, 30)
 PIPE_BORDER = (160, 30, 0)
 TEXT_COLOR = (255, 255, 255)
-# ... (other colors)
 BLACK = (0, 0, 0)
 
 # === ÉTATS DU JEU ===
 game_state = GameState.MENU
+
+# === NEW: Menu and Mode Variables ===
+menu_options = [
+    "Space Bar (Python)",
+    "Button (RE0)",
+    "Encoder (RE1)",
+    "IR Sensor (RE2)",
+    "Ultrasound (RC2/RC3)"
+]
+# PIC Mode IDs: 0=Button, 1=Encoder, 2=IR, 3=Ultrasound
+pic_mode_map = [None, 0, 1, 2, 3]
+
+selected_mode = 0  # Index of the menu_options list
+game_mode = 0  # Stores the selected_mode *after* player hits Start
 
 
 # === FONCTIONS DU JEU ===
@@ -90,7 +103,6 @@ def move_pipes(pipes_list):
 
 def draw_pipes(pipes_list):
     for p in pipes_list:
-        # ... (drawing logic)
         pygame.draw.rect(screen, PIPE_RED, (p["x"] + 7, p["height"], 56, HEIGHT - p["height"]))
         pygame.draw.rect(screen, PIPE_BORDER, (p["x"] + 7, p["height"], 56, HEIGHT - p["height"]), 2)
         pygame.draw.rect(screen, PIPE_RED, (p["x"] + 7, 0, 56, p["height"] - pipe_gap))
@@ -111,11 +123,6 @@ def draw_bird(x, y, vel):
 
 
 def check_collision(pipes_list):
-    """
-    Checks for collisions.
-    Sets game_active to False and returns True if a collision occurred.
-    Otherwise, returns False.
-    """
     global game_active
     bird_center = (bird_x, bird_y)
     bird_radius = 15
@@ -127,7 +134,7 @@ def check_collision(pipes_list):
         if circle_rect_collision(bird_center, bird_radius, top_rect) or \
                 circle_rect_collision(bird_center, bird_radius, bottom_rect):
             collision = True
-            break  # Exit loop early
+            break
 
     if bird_y + bird_radius >= ground_y or bird_y - bird_radius <= 0:
         collision = True
@@ -158,7 +165,6 @@ def display_score(current_score):
 
 # === DÉCOR (Functions unchanged) ===
 def create_background_block(layer="far"):
-    # ... (logic)
     if layer == "far":
         block_type = random.choice(["mountains", "city", "clouds", "mountain_tree", "clouds"])
     else:
@@ -170,18 +176,15 @@ def create_background_block(layer="far"):
 
 
 def move_background(blocks, speed):
-    # ... (logic)
     for b in blocks:
         b["x"] -= speed
     return [b for b in blocks if b["x"] > -200]
 
 
 def draw_background(blocks):
-    # ... (logic)
     for b in blocks:
         if b["type"] == "mountains":
             draw_mountains(b["x"])
-        # ... (other draw types)
         elif b["type"] == "mountain_tree":
             draw_mountain_tree(b["x"])
         elif b["type"] == "city":
@@ -194,7 +197,6 @@ def draw_background(blocks):
             draw_empty(b["x"])
 
 
-# ... (All other background draw functions: draw_empty, draw_mountains, etc.)
 def draw_empty(x):
     pygame.draw.rect(screen, (100, 200, 100), (x, ground_y - 5, 200, 5))
 
@@ -253,21 +255,33 @@ def reset_game():
     bird_angle = 0.0
     game_active = True
     compteur = 0
-    # Send score 0 to PIC on reset
-    sc.send_live_score(score)  # <<< UPDATED
+    SC.send_live_score(score)
 
 
 # === MENU ET ÉCRAN SCORE ===
 def draw_menu():
+    global selected_mode
     screen.fill(SKY)
     screen.blit(logo_img, (WIDTH // 2 - logo_img.get_width() // 2, 50))
-    screen.blit(bird_img, (WIDTH // 2 - bird_img.get_width() // 2, 200))
-    start_text = small_font.render("Press SPACE to Start", True, BLACK)
-    screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, 300))
-    play_rect = screen.blit(play_img, (WIDTH // 2 - 60, 350))
-    score_rect = screen.blit(score_img, (WIDTH // 2 - 60, 420))
-    replay_rect = screen.blit(replay_img, (WIDTH // 2 - 30, 500))
-    return play_rect, score_rect, replay_rect
+
+    # --- New Menu Drawing Logic ---
+    for i, option in enumerate(menu_options):
+        if i == selected_mode:
+            text_color = (255, 0, 0)  # Red for selected
+            option_text = f"> {option}"
+        else:
+            text_color = BLACK
+            option_text = f"  {option}"
+
+        text_surface = small_font.render(option_text, True, text_color)
+        screen.blit(text_surface, (WIDTH // 2 - text_surface.get_width() // 2, 250 + i * 40))
+
+    start_text = font.render("Press SPACE to Start", True, BLACK)
+    screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, 480))
+
+    # We still return the score rect for collision
+    score_rect = screen.blit(score_img, (WIDTH // 2 - 60, 520))
+    return None, score_rect, None  # No play or replay rect
 
 
 def draw_score_screen():
@@ -292,34 +306,53 @@ while True:
     # === EVENT HANDLING ===
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            sc.close_serial()  # <<< UPDATED
+            SC.close_serial()
             pygame.quit()
             sys.exit()
 
         # === INPUT CLAVIER ===
         if event.type == pygame.KEYDOWN:
-            if game_state == GameState.MENU and event.key == pygame.K_SPACE:
-                reset_game()
-                game_state = GameState.GAME
-            elif game_state == GameState.GAME and game_active and event.key == pygame.K_SPACE:
-                bird_velocity = flap_strength
+
+            # --- NEW: Menu Navigation ---
+            if game_state == GameState.MENU:
+                if event.key == pygame.K_UP:
+                    selected_mode = (selected_mode - 1) % len(menu_options)
+                elif event.key == pygame.K_DOWN:
+                    selected_mode = (selected_mode + 1) % len(menu_options)
+                elif event.key == pygame.K_SPACE:
+                    game_mode = selected_mode  # Lock in the mode
+
+                    # === NEW: Send Mode to PIC ===
+                    # Get the PIC's mode ID from our map
+                    pic_mode_to_send = pic_mode_map[game_mode]
+                    if pic_mode_to_send is not None:
+                        SC.send_mode_select(pic_mode_to_send)
+
+                    reset_game()
+                    game_state = GameState.GAME
+
+            # --- UPDATED: In-Game Flap Logic ---
+            elif game_state == GameState.GAME and game_active:
+                # Flap ONLY if "Space Bar" mode (index 0) is active
+                if game_mode == 0 and event.key == pygame.K_SPACE:
+                    bird_velocity = flap_strength
+
+            # --- Restart / Return Logic ---
             elif game_state == GameState.GAME and not game_active and event.key == pygame.K_r:
                 if score > best_score:
                     best_score = score
                 reset_game()
-                game_state = GameState.GAME
+                game_state = GameState.GAME  # Restart game
             elif game_state == GameState.SCORE_SCREEN and event.key == pygame.K_r:
-                game_state = GameState.MENU
+                game_state = GameState.MENU  # Return to menu
 
         # === INPUT SOURIS MENU ===
         if game_state == GameState.MENU and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = pygame.mouse.get_pos()
-            play_rect, score_rect, _ = draw_menu()
-            if play_rect.collidepoint(mx, my):
-                reset_game()
-                game_state = GameState.GAME
-            elif score_rect.collidepoint(mx, my):
-                sc.send_request_best()
+            _, score_rect, _ = draw_menu()  # Only care about score rect
+
+            if score_rect and score_rect.collidepoint(mx, my):
+                SC.send_request_best()
                 game_state = GameState.SCORE_SCREEN
 
         # === SPAWN EVENTS ===
@@ -331,23 +364,23 @@ while True:
             bg_near.append(create_background_block("near"))
 
     # ==========================================================
-    # <<< NEW SERIAL PROTOCOL PARSER >>>
+    # <<< UPDATED SERIAL PROTOCOL PARSER >>>
     # ==========================================================
-    line = sc.read_serial_input()
+    line = SC.read_serial_input()
     if line:
         # --- Handle Button Press ---
         if line == "CS:BTN,1":
-            if game_state == GameState.GAME and game_active:
+            # Flap ONLY if a hardware mode (index > 0) is active
+            if game_mode > 0 and game_state == GameState.GAME and game_active:
                 compteur += 1
-                print("Up=", compteur)
+                print("Hardware Flap=", compteur)
                 bird_velocity = flap_strength
 
         # --- Handle Best Score Report from PIC ---
         elif line.startswith("CS:BEST,"):
             try:
-                # Extract the number after "CS:BEST,"
                 new_best = int(line.split(',')[1])
-                best_score = new_best  # Update our local best score
+                best_score = new_best
                 print(f"PIC reported new best score: {best_score}")
             except Exception as e:
                 print(f"Error parsing PIC command: {line} - {e}")
@@ -355,31 +388,28 @@ while True:
         # --- Handle Ready Signal ---
         elif line.startswith("CS:READY,"):
             print(f"PIC Controller is ready! Protocol={line.split(',')[1]}")
-            # Ask the PIC for its best score on startup
-            sc.send_request_best()
+            SC.send_request_best()
 
     # === LOGIQUE DU JEU ===
     if game_state == GameState.GAME and game_active:
         bird_velocity += gravity
         bird_y += bird_velocity
 
-        sc.send_angle(int(bird_velocity))
+        SC.send_angle(int(bird_velocity))
 
         pipes = move_pipes(pipes)
         bg_far = move_background(bg_far, bg_far_speed)
         bg_near = move_background(bg_near, bg_near_speed)
 
-        # --- Check for collision and send Game Over command ---
         if check_collision(pipes):
-            sc.send_game_over()  # <<< UPDATED
+            SC.send_game_over()
 
-        # --- Update Score & Send to PIC ---
         for p in pipes:
             if not p.get("scored", False):
                 if (p["x"] + PIPE_WIDTH) < bird_x:
                     score += 1
                     p["scored"] = True
-                    sc.send_live_score(score)  # <<< UPDATED
+                    SC.send_live_score(score)
 
     # === DESSIN SELON ÉTAT ===
     if game_state == GameState.MENU:
