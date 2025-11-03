@@ -319,6 +319,7 @@ while True:
                 reset_game()
                 game_state = GameState.GAME
             elif score_rect.collidepoint(mx, my):
+                sc.send_request_best()
                 game_state = GameState.SCORE_SCREEN
 
         # === SPAWN EVENTS ===
