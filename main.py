@@ -362,6 +362,9 @@ while True:
     if game_state == GameState.GAME and game_active:
         bird_velocity += gravity
         bird_y += bird_velocity
+
+        sc.send_angle(int(bird_velocity))
+
         pipes = move_pipes(pipes)
         bg_far = move_background(bg_far, bg_far_speed)
         bg_near = move_background(bg_near, bg_near_speed)
