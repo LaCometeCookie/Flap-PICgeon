@@ -11,6 +11,12 @@
 // --- Local Buffers ---
 static unsigned char usbReadBuffer[32];
 
+// --- File-Scope Flags for ASM ---
+// These are declared here (static global) so the ASM block can see them.
+static char button_was_pressed = 0;
+static char process_button_flag = 0;
+
+
 /**
  * @brief Configures Timer2 to create a periodic interrupt.
  */
@@ -38,11 +44,9 @@ static void System_Init(void)
     initUSBLib();       // Initialize the USB CDC driver
 
     // 3. Set up the button pin as an input
-    BUTTON_TRIS = 1;    // 1 = Input
+    BUTTON_TRIS = 1;    // 1 = Input (RE0)
     
-    // === NEW: Enable the USB Interrupt Source ===
-    // We are still in the non-priority model (IPEN=0)
-    // but we are enabling the USB interrupt as a source.
+    // 4. Enable the USB Interrupt Source
     PIE2bits.USBIE = 1;
 }
 
@@ -50,7 +54,7 @@ static void System_Init(void)
 void main(void) 
 {
     uint16_t initial_best_score = 0;
-    char button_was_pressed = 0;
+    // button_was_pressed is now a static global
     
     // 1. Initialize all hardware
     System_Init();
@@ -69,7 +73,6 @@ void main(void)
     while(1)
     {
         // === Required Main-Loop Polling for Hybrid Stack ===
-        // This handles the high-level device state (enumeration)
         USBDeviceTasks();
         
         // --- 1. Check for data *from* the PC ---
@@ -82,23 +85,51 @@ void main(void)
             }
         }
         
-        // --- 2. Check for button press *from* the PIC ---
-        if(BUTTON_PIN == 1 && button_was_pressed == 0)
+        // --- 2. Check for button press *from* the PIC (using ASM) ---
+        
+        // Reset the C flag at the start of each loop
+        process_button_flag = 0; 
+
+        asm(
+            // Check if the button is currently held down
+            "BTFSS   PORTE, 0 \n"            // Bit Test (PORTE, bit 0), Skip if Set (if button is 1)
+            "GOTO    _button_is_released \n" // If button is 0, jump to release logic
+
+            // --- If we are here, the button pin (RE0) is HIGH (1) ---
+
+            // Now, check if it was already pressed before
+            "MOVF    _button_was_pressed, W \n" // Move flag to W, sets Zero flag if W=0
+            "BNZ     _end_asm_check \n"      // Branch if Not Zero (if flag was 1, we're done)
+
+            // --- If we are here, it's a NEW button press ---
+            "MOVLW   1 \n"                   // Move Literal Value 1 into W
+            "MOVWF   _process_button_flag \n" // Move W into our 'process_button_flag'
+            "GOTO    _end_asm_check \n"      // We're done, jump to the end
+
+        "_button_is_released: \n"
+            // --- If we are here, the button pin (RE0) is LOW (0) ---
+            "CLRF    _button_was_pressed \n" // Clear the main flag
+
+        "_end_asm_check: \n"
+            // All assembly paths end here.
+        ); // --- End of the assembly block ---
+
+        
+        // C code checks the flag set by the assembly
+        if(process_button_flag == 1)
         {
-            __delay_ms(20); // Basic debounce delay
-            if(BUTTON_PIN == 1) // Check again
+            __delay_ms(20); // Debounce
+            if (BUTTON_PIN == 1) // Re-check pin after debounce
             {
-                button_was_pressed = 1;
+                // Set the C flag that the ASM block reads
+                button_was_pressed = 1; 
+                
+                // Send the new protocol message
                 Protocol_SendButtonPress();
             }
         }
-        else if(BUTTON_PIN == 0)
-        {
-            button_was_pressed = 0; // Reset the flag
-        }
 
         // === Required Main-Loop Polling for Hybrid Stack ===
-        // This "pumps" the send buffer
         CDCTxService();
     }
     
@@ -107,7 +138,6 @@ void main(void)
 
 /**
  * @brief Main Interrupt Service Routine (ISR)
- * (RCONbits.IPEN is 0, so this is the *only* ISR)
  */
 void __interrupt() mainISR (void)
 {
@@ -119,11 +149,8 @@ void __interrupt() mainISR (void)
     }
     
     // --- 2. USB Interrupt: Handled by the USB library ---
-    // This is the "dedicated USB interrupt" check.
-    // It is gated by its own flag, not Timer2's.
     if (PIE2bits.USBIE && PIR2bits.USBIF)
     {
         processUSBTasks();
-        // The USBIF flag is cleared inside processUSBTasks()
     }
 }
