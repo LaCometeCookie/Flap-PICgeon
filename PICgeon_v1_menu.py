@@ -27,6 +27,7 @@ logo_img = pygame.transform.scale(logo_img, (345, 72))
 play_img = pygame.transform.scale(play_img, (120, 60))
 score_img = pygame.transform.scale(score_img, (120, 60))
 
+""" ~~~~~~~~~~~~~~~~~~~~~ Définition des Variables ~~~~~~~~~~~~~~~~~~~~~ """
 # === CONSTANTES PHYSIQUES ===
 gravity = 0.25
 flap_strength = -6.5
@@ -48,6 +49,18 @@ score = 0
 best_score = 0
 ground_y = HEIGHT - 80
 game_active = True
+
+
+# === MÉMOIRE POUR LE MODE REPLAY ===
+replay_mode = False           # True quand on rejoue une partie enregistrée
+replay_start_time = 0         # Temps de début du replay
+input_log = []                # Liste des inputs (temps relatifs)
+pipe_log = []                 # Liste des tuyaux (x, hauteur, moment d'apparition)
+recording = False             # True quand on enregistre une partie
+replay_pipe_index = 0
+replay_input_index = 0
+speed_multiplier = 1
+
 
 # === COULEURS ===
 SKY = (135, 206, 250)
@@ -92,7 +105,7 @@ def create_pipe():
 def move_pipes(pipes):
     """Déplace les tuyaux."""
     for p in pipes:
-        p["x"] -= pipe_speed
+        p["x"] -= pipe_speed * speed_multiplier
     return [p for p in pipes if p["x"] > -PIPE_WIDTH]
 
 def draw_pipes(pipes):
@@ -115,7 +128,7 @@ def draw_bird(x, y, vel):
     global bird_angle
     target_angle = max(-60, min(vel * -4, 60))
     # interpolation douce entre l'angle actuel et la cible
-    bird_angle += (target_angle - bird_angle) * 0.2
+    bird_angle += (target_angle - bird_angle) * (0.2 * speed_multiplier)
 
     rotated_bird = pygame.transform.rotate(bird_img, bird_angle)
     rect = rotated_bird.get_rect(center=(x, y))
@@ -285,6 +298,10 @@ while True:
         if event.type == pygame.KEYDOWN:
             if game_state == STATE_GAME and game_active and event.key == pygame.K_SPACE:
                 bird_velocity = flap_strength
+                #Recording for the replay function
+                if recording:
+                    input_log.append(pygame.time.get_ticks() - replay_start_time)
+
             elif game_state == STATE_GAME and not game_active and event.key == pygame.K_r:
                 # Retour au menu + sauvegarde score
                 if score > best_score:
@@ -293,21 +310,59 @@ while True:
             elif game_state == STATE_SCORE_SCREEN and event.key == pygame.K_r:
                 game_state = STATE_MENU
 
-        # === INPUT SOURIS MENU ===
+        # === DETECTION DU CHOIX MENU AVEC SOURIS ===
         if game_state == STATE_MENU and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = pygame.mouse.get_pos()
             play_rect, score_rect, replay_rect = draw_menu()
+            # Start
             if play_rect.collidepoint(mx, my):
                 reset_game()
                 game_state = STATE_GAME
+                reset_game()
+                game_state = STATE_GAME
+                recording = True
+                replay_mode = False
+                input_log.clear()
+                pipe_log.clear()
+                replay_start_time = pygame.time.get_ticks()
+
+            # Score
             elif score_rect.collidepoint(mx, my):
                 game_state = STATE_SCORE_SCREEN
+            # Replay
             elif replay_rect.collidepoint(mx, my):
-                pass  # rien pour l'instant
+                if pipe_log and input_log:
+                    reset_game()
+                    game_state = STATE_GAME
+                    replay_mode = True
+                    recording = False
+                    replay_start_time = pygame.time.get_ticks()
+                    replay_pipe_index = 0
+                    replay_input_index = 0
+                    pipes.clear()
+
+                    # === Construction des tuyaux fixes pour le replay ===
+                    replay_pipe_spacing = 200 * speed_multiplier # distance doublée (200 px d’origine ×2)
+                    x_start = WIDTH + 100  # position du premier tuyau
+                    for i, p_data in enumerate(pipe_log):
+                        pipes.append({
+                            "x": x_start + i * replay_pipe_spacing,
+                            "height": p_data["height"],
+                            "scored": False
+                        })
 
         # === SPAWN PIPE ===
         if event.type == SPAWNPIPE and game_state == STATE_GAME and game_active:
-            pipes.append(create_pipe())
+            new_pipe = create_pipe()
+            pipes.append(new_pipe)
+            if recording:
+                # On enregistre la hauteur du tuyau et le moment où il est apparu
+                pipe_log.append({
+                    "time": pygame.time.get_ticks() - replay_start_time,
+                    "height": new_pipe["height"]
+                })
+
+        # === SPAWN BACKGROUND ===
         if event.type == SPAWNBG_FAR:
             bg_far.append(create_background_block("far"))
         if event.type == SPAWNBG_NEAR:
@@ -322,9 +377,19 @@ while True:
 
     # === LOGIQUE DU JEU ===
     if game_state == STATE_GAME and game_active:
-        bird_velocity += gravity
+        if replay_mode:
+            speed_multiplier = 2
+        else:
+            speed_multiplier = 1
+
+        bird_velocity += gravity * speed_multiplier
         bird_y += bird_velocity
+
         pipes = move_pipes(pipes)
+        # Nettoyage de sécurité : empêche l'accumulation excessive de tuyaux pendant le replay
+        if len(pipes) > 10:
+            pipes = pipes[-10:]
+
         bg_far = move_background(bg_far, bg_far_speed)
         bg_near = move_background(bg_near, bg_near_speed)
         check_collision(pipes)
@@ -334,6 +399,16 @@ while True:
                 if (p["x"] + PIPE_WIDTH) < bird_x:
                     score += 1
                     p["scored"] = True
+
+        if replay_mode:
+            elapsed = (pygame.time.get_ticks() - replay_start_time) * 2  # accéléré x2
+
+            # Appliquer les flaps enregistrés
+            if replay_input_index < len(input_log):
+                if elapsed >= input_log[replay_input_index]:
+                    bird_velocity = (flap_strength * 1.15) # L'oiseau monte 2x plus vite
+                    replay_input_index += 1
+
 
     # === DESSIN SELON ÉTAT ===
     if game_state == STATE_MENU:
