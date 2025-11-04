@@ -19,13 +19,13 @@ bird_img = pygame.transform.scale(bird_img, (46, 36))  # taille ajustable
 logo_img = pygame.image.load("Sprites/Logo.png").convert_alpha()
 play_img = pygame.image.load("Sprites/Play.png").convert_alpha()
 score_img = pygame.image.load("Sprites/Score.png").convert_alpha()
-replay_img = pygame.Surface((60, 60))
-replay_img.fill((255, 255, 255))  # carré blanc pour Replay
+replay_img = pygame.image.load("Sprites/Replay.png").convert_alpha()
 
 # redimensionnement des éléments du menu
 logo_img = pygame.transform.scale(logo_img, (345, 72))
-play_img = pygame.transform.scale(play_img, (120, 60))
-score_img = pygame.transform.scale(score_img, (120, 60))
+play_img = pygame.transform.scale(play_img, (104, 58))  # 52*29
+score_img = pygame.transform.scale(score_img, (104, 58))
+replay_img = pygame.transform.scale(replay_img, (104, 58))
 
 """ ~~~~~~~~~~~~~~~~~~~~~ Définition des Variables ~~~~~~~~~~~~~~~~~~~~~ """
 # === CONSTANTES PHYSIQUES ===
@@ -123,12 +123,14 @@ def draw_pipes(pipes):
         pygame.draw.rect(screen, PIPE_BORDER_RED, (p["x"], (p["height"] - pipe_gap - 30), PIPE_WIDTH, 30))
         pygame.draw.rect(screen, PIPE_BORDER_OUTLINE, (p["x"], (p["height"] - pipe_gap - 30), PIPE_WIDTH, 30), 2)
 
+
 bird_angle = 0.0  # angle initial de l'oiseau
 def draw_bird(x, y, vel):
     global bird_angle
     target_angle = max(-60, min(vel * -4, 60))
-    # interpolation douce entre l'angle actuel et la cible
-    bird_angle += (target_angle - bird_angle) * (0.2 * speed_multiplier)
+    # interpolation plus rapide en mode replay, mais sans modifier l'amplitude
+    interp_speed = 0.2 * speed_multiplier
+    bird_angle += (target_angle - bird_angle) * interp_speed
 
     rotated_bird = pygame.transform.rotate(bird_img, bird_angle)
     rect = rotated_bird.get_rect(center=(x, y))
@@ -268,7 +270,7 @@ def draw_menu():
     screen.blit(bird_img, (WIDTH // 2 - bird_img.get_width() // 2, 200))
     play_rect = screen.blit(play_img, (WIDTH // 2 - 60, 350))
     score_rect = screen.blit(score_img, (WIDTH // 2 - 60, 420))
-    replay_rect = screen.blit(replay_img, (WIDTH // 2 - 30, 500))
+    replay_rect = screen.blit(replay_img, (WIDTH // 2 - 60, 490))
     return play_rect, score_rect, replay_rect
 
 def draw_score_screen():
@@ -344,6 +346,7 @@ while True:
                     # === Construction des tuyaux fixes pour le replay ===
                     replay_pipe_spacing = 200 * speed_multiplier # distance doublée (200 px d’origine ×2)
                     x_start = WIDTH + 100  # position du premier tuyau
+                    pipes.clear()
                     for i, p_data in enumerate(pipe_log):
                         pipes.append({
                             "x": x_start + i * replay_pipe_spacing,
@@ -352,7 +355,7 @@ while True:
                         })
 
         # === SPAWN PIPE ===
-        if event.type == SPAWNPIPE and game_state == STATE_GAME and game_active:
+        if event.type == SPAWNPIPE and game_state == STATE_GAME and game_active and not replay_mode:
             new_pipe = create_pipe()
             pipes.append(new_pipe)
             if recording:
@@ -406,7 +409,7 @@ while True:
             # Appliquer les flaps enregistrés
             if replay_input_index < len(input_log):
                 if elapsed >= input_log[replay_input_index]:
-                    bird_velocity = (flap_strength * 1.15) # L'oiseau monte 2x plus vite
+                    bird_velocity = (flap_strength * 1.1) # L'oiseau monte 2x plus vite
                     replay_input_index += 1
 
 
