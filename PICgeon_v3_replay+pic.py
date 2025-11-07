@@ -1,15 +1,7 @@
 import pygame
 import random
 import sys
-from enum import Enum
 import serialComs as SC  # <<< USES OUR UPDATED SERIAL FILE
-
-
-# --- Define Game States using Enum ---
-class GameState(Enum):
-    MENU = "menu"
-    GAME = "game"
-    SCORE_SCREEN = "score_screen"
 
 
 # === 1. SERIAL CONNECTION (Happens FIRST) ===
@@ -108,6 +100,7 @@ STATE_GAME = "game"
 STATE_SCORE_SCREEN = "score_screen"
 game_state = STATE_MAIN_MENU
 
+
 # === NEW: Menu and Mode Variables ===
 menu_options = [
     "Space Bar (Python)",
@@ -118,6 +111,7 @@ menu_options = [
 ]
 selected_mode = 0   # Index of the menu_options list
 game_mode = 0       # Stores the selected_mode *after* player hits Start
+last_game_mode = 0
 
 # PIC Mode IDs: 0=Button, 1=Encoder, 2=IR, 3=Ultrasound
 pic_mode_map = [None, 0, 1, 2, 3]
@@ -368,9 +362,13 @@ while True:
 
             # --- GAME OVER / RETOUR MENU ---
             elif game_state == STATE_GAME and not game_active and event.key == pygame.K_r:
+                last_game_mode = game_mode
                 if score > best_score:
                     best_score = score
                 game_state = STATE_MAIN_MENU
+                game_active = True
+                replay_mode = False
+                recording = False
 
             # --- ÉCRAN DU SCORE ---
             elif game_state == STATE_SCORE_SCREEN and event.key == pygame.K_r:
@@ -391,6 +389,7 @@ while True:
 
             # --- Bouton REPLAY ---
             elif replay_rect.collidepoint(mx, my):
+                game_mode = last_game_mode # Reprendre le dernier mode sélectionné
                 if pipe_log and input_log:
                     reset_game()
                     game_state = STATE_GAME
@@ -400,6 +399,11 @@ while True:
                     replay_pipe_index = 0
                     replay_input_index = 0
                     pipes.clear()
+
+                    # Force le jeu à se lancer tout de suite
+                    game_active = True
+                    bird_y = HEIGHT // 2
+                    bird_velocity = 0
 
                     # Construction des tuyaux fixes pour le replay
                     replay_pipe_spacing = 200 * speed_multiplier
@@ -436,7 +440,7 @@ while True:
         # --- Handle Button Press ---
         if line == "CS:BTN,1":
             # Flap ONLY if a hardware mode (index > 0) is active
-            if game_mode > 0 and game_state == GameState.GAME and game_active:
+            if game_mode > 0 and game_state == STATE_GAME and game_active:
                 compteur += 1
                 print("Hardware Flap=", compteur)
                 bird_velocity = flap_strength
@@ -455,35 +459,36 @@ while True:
             print(f"PIC Controller is ready! Protocol={line.split(',')[1]}")
             SC.send_request_best()
 
-        # === LOGIQUE DU JEU ===
-        if game_state == STATE_GAME and game_active:
-            # Vitesse et gravité ajustées selon le mode
-            if replay_mode:
-                speed_multiplier = 2
-            else:
-                speed_multiplier = 1
 
-            bird_velocity += gravity * speed_multiplier
-            bird_y += bird_velocity
+    # === LOGIQUE DU JEU ===
+    if game_state == STATE_GAME and game_active:
+        # Vitesse et gravité ajustées selon le mode
+        if replay_mode:
+            speed_multiplier = 2
+        else:
+            speed_multiplier = 1
 
-            pipes = move_pipes(pipes)
-            bg_far = move_background(bg_far, bg_far_speed)
-            bg_near = move_background(bg_near, bg_near_speed)
+        bird_velocity += gravity * speed_multiplier
+        bird_y += bird_velocity
 
-            check_collision(pipes)
+        pipes = move_pipes(pipes)
+        bg_far = move_background(bg_far, bg_far_speed)
+        bg_near = move_background(bg_near, bg_near_speed)
 
-            # Calcul du score
-            for p in pipes:
-                if not p.get("scored", False) and (p["x"] + PIPE_WIDTH) < bird_x:
-                    score += 1
-                    p["scored"] = True
+        check_collision(pipes)
 
-            # Gestion du replay (entrées enregistrées)
-            if replay_mode:
-                elapsed = (pygame.time.get_ticks() - replay_start_time) * 2
-                if replay_input_index < len(input_log) and elapsed >= input_log[replay_input_index]:
-                    bird_velocity = flap_strength * 1.1
-                    replay_input_index += 1
+        # Calcul du score
+        for p in pipes:
+            if not p.get("scored", False) and (p["x"] + PIPE_WIDTH) < bird_x:
+                score += 1
+                p["scored"] = True
+
+        # Gestion du replay (entrées enregistrées)
+        if replay_mode:
+            elapsed = (pygame.time.get_ticks() - replay_start_time) * 2
+            if replay_input_index < len(input_log) and elapsed >= input_log[replay_input_index]:
+                bird_velocity = flap_strength * 1.1
+                replay_input_index += 1
 
 
     # === DESSIN SELON ÉTAT ===
