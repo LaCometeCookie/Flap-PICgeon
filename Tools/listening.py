@@ -46,16 +46,16 @@ def main():
 
             while True:
                 # Read one full line from the serial port, ending in '\n'
-                line = ser.readline()
+                byte_read = ser.read(1)
 
-                if line:  # If 'line' is not empty (i.e., data was received)
+                if byte_read:  # If 'line' is not empty (i.e., data was received)
                     try:
                         # Decode the bytes into a readable string and remove whitespace
-                        received_data = line.decode('utf-8').strip()
-                        print(f"Reçu: '{received_data}'")
+                        data_str = byte_read.decode('ascii')
+                        print(f"Reçu: '{data_str}'")
                     except UnicodeDecodeError:
                         # If data isn't valid text, print the raw bytes
-                        print(f"Reçu (données brutes): {line}")
+                        print(f"Error")
 
     except serial.SerialException as e:
         print(f"\nERREUR de port série: {e}")
