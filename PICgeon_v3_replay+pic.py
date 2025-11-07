@@ -84,6 +84,7 @@ BIRD_BEAK = (255, 120, 0)
 BIRD_EYE = (255, 255, 255)
 BIRD_PUPIL = (0, 0, 0)
 TEXT_COLOR = (255, 255, 255)
+ARCADE_YELLOW = (23, 166, 76)
 CITY_OUTLINE = (0, 0, 0)
 CITY_BODY = (100, 100, 100)
 MOUNTAIN_COLOR = (60, 180, 75)
@@ -296,6 +297,20 @@ def draw_main_menu():
     play_rect = screen.blit(play_img, (WIDTH // 2 - 60, 350))
     score_rect = screen.blit(score_img, (WIDTH // 2 - 60, 420))
     replay_rect = screen.blit(replay_img, (WIDTH // 2 - 60, 490))
+
+    # === Texte clignotant "PRESS START" ===
+    # Clignote toutes les 500 ms : visible quand tick//500 est pair
+    current_time = pygame.time.get_ticks()
+    if (current_time // 500) % 2 == 0:  # Calcul du temps pour afficher le texte
+        press_start_text = game_over_font.render("PRESS START", True, ARCADE_YELLOW)
+        screen.blit(
+            press_start_text,
+            (
+                WIDTH // 2 - press_start_text.get_width() // 2,
+                play_rect.top - 60  # 60 px au-dessus du bouton Play
+            ),
+        )
+
     return play_rect, score_rect, replay_rect
 
 
