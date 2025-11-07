@@ -1,12 +1,6 @@
 #ifndef MAIN_H
 #define	MAIN_H
 
-// --- Pin Definitions ---
-// Define the button pin (PORTE, pin 0)
-#define BUTTON_PIN      PORTEbits.RE0
-#define BUTTON_TRIS     TRISEbits.TRISE0
-
-
 // --- Type Definitions ---
 // Basic boolean type definitions
 #ifndef bool
@@ -14,5 +8,8 @@
     #define true    1
     #define false   0
 #endif
+
+// All pin definitions and the global mode variable
+// have been moved to inputs.h and inputs.c
 
 #endif	/* MAIN_H */
