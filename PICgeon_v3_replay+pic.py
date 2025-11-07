@@ -125,7 +125,7 @@ def create_pipe():
 
 def move_pipes(pipes_list):
     for p in pipes_list:
-        p["x"] -= pipe_speed
+        p["x"] -= pipe_speed * speed_multiplier
     return [p for p in pipes_list if p["x"] > -PIPE_WIDTH]
 
 
@@ -366,6 +366,11 @@ while True:
                     game_mode = selected_mode
                     reset_game()
                     game_state = STATE_GAME
+                    recording = True  # Active l’enregistrement pour permettre le replay
+                    replay_mode = False
+                    input_log.clear()
+                    pipe_log.clear()
+                    replay_start_time = pygame.time.get_ticks()
 
             # --- EN JEU ---
             elif game_state == STATE_GAME and game_active:
@@ -404,6 +409,7 @@ while True:
 
             # --- Bouton REPLAY ---
             elif replay_rect.collidepoint(mx, my):
+                speed_multiplier = 2
                 game_mode = last_game_mode # Reprendre le dernier mode sélectionné
                 if pipe_log and input_log:
                     reset_game()
@@ -415,13 +421,8 @@ while True:
                     replay_input_index = 0
                     pipes.clear()
 
-                    # Force le jeu à se lancer tout de suite
-                    game_active = True
-                    bird_y = HEIGHT // 2
-                    bird_velocity = 0
-
                     # Construction des tuyaux fixes pour le replay
-                    replay_pipe_spacing = 200 * speed_multiplier
+                    replay_pipe_spacing = 200
                     x_start = WIDTH + 100
                     pipes.clear()
                     for i, p_data in enumerate(pipe_log):
