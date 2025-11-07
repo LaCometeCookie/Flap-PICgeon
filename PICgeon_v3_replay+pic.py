@@ -482,6 +482,7 @@ while True:
             if not p.get("scored", False) and (p["x"] + PIPE_WIDTH) < bird_x:
                 score += 1
                 p["scored"] = True
+                SC.send_live_score(score)
 
         # Gestion du replay (entrées enregistrées)
         if replay_mode:
