@@ -9,7 +9,7 @@ SC.connect_to_serial_port()
 
 # === 2. INITIALISATION ===
 pygame.init()
-WIDTH, HEIGHT = 600, 600
+WIDTH, HEIGHT = 700, 680
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
 pygame.display.set_caption("Flap-PICGeon")
@@ -28,11 +28,13 @@ logo_img = pygame.image.load("Sprites/Logo.png").convert_alpha()
 play_img = pygame.image.load("Sprites/Play.png").convert_alpha()
 score_img = pygame.image.load("Sprites/Score.png").convert_alpha()
 replay_img = pygame.image.load("Sprites/Replay.png").convert_alpha()
+instruction_img = pygame.image.load("Sprites/Instruction.png").convert_alpha()
 # redimensionnement des éléments du menu
 logo_img = pygame.transform.scale(logo_img, (345, 72))
 play_img = pygame.transform.scale(play_img, (104, 58))  # 52*29
 score_img = pygame.transform.scale(score_img, (104, 58))
 replay_img = pygame.transform.scale(replay_img, (104, 58))
+instruction_img = pygame.transform.scale(instruction_img, (104, 58))
 
 """ ~~~~~~~~~~~~~~~~~~~~~ Définition des Variables ~~~~~~~~~~~~~~~~~~~~~ """
 # === CONSTANTES PHYSIQUES ===
@@ -45,7 +47,7 @@ bg_near_speed = 2
 PIPE_WIDTH = 70
 
 # === VARIABLES DU JEU ===
-VITESSE = 1200  # ms entre chaque apparition de tuyau
+VITESSE = 1400  # ms entre chaque apparition de tuyau
 bird_x = 80
 bird_y = HEIGHT // 2
 bird_velocity = 0
@@ -61,7 +63,6 @@ compteur = 0
 # SCORE screen (simple “line by line” fetch)
 score_lines = [-1, -1, -1, -1]   # Button, Encoder, IR, Ultrasound
 score_fetch = -1                         # -1 = idle; 0..3 = which line we’re filling
-
 
 
 # === MÉMOIRE POUR LE MODE REPLAY ===
@@ -103,6 +104,7 @@ STATE_MAIN_MENU = "main_menu"
 STATE_MODE_SELECT = "mode_select"
 STATE_GAME = "game"
 STATE_SCORE_SCREEN = "score_screen"
+STATE_INSTRUCTIONS = "instructions"
 game_state = STATE_MAIN_MENU
 
 
@@ -123,7 +125,7 @@ pic_mode_map = [None, 0, 1, 2, 3]
 
 # === FONCTIONS DU JEU ===
 def create_pipe():
-    height = random.randint(170, 430)
+    height = random.randint(200, 560)
     return {"x": WIDTH, "height": height, "scored": False}
 
 
@@ -303,6 +305,7 @@ def draw_main_menu():
     play_rect = screen.blit(play_img, (WIDTH // 2 - 60, 350))
     score_rect = screen.blit(score_img, (WIDTH // 2 - 60, 420))
     replay_rect = screen.blit(replay_img, (WIDTH // 2 - 60, 490))
+    instruction_rect = screen.blit(instruction_img, (WIDTH // 2 - 60, 560))
 
     # === Texte clignotant "PRESS START" ===
     # Clignote toutes les 500 ms : visible quand tick//500 est pair
@@ -317,7 +320,7 @@ def draw_main_menu():
             ),
         )
 
-    return play_rect, score_rect, replay_rect
+    return play_rect, score_rect, replay_rect, instruction_rect
 
 
 def draw_mode_select():
@@ -353,6 +356,27 @@ def draw_score_screen():
 
     hint = small_font.render("Press R to return", True, BLACK)
     screen.blit(hint, (WIDTH//2 - hint.get_width()//2, HEIGHT - 100))
+
+
+def draw_instructions_screen():
+    screen.fill((135, 206, 250))  # Fond bleu ciel
+    title_text = small_font.render("INSTRUCTIONS", True, BLACK)
+    screen.blit(title_text, (screen.get_width() // 2 - title_text.get_width() // 2, 100))
+
+    instructions = [
+        "Utiliser ESPACE, le bouton, le digital encoder,",
+        "l'ultrason ou l'infrarouge pour sauter.",
+        "",
+        "Tuyau, sol ou ciel touche = fin de partie.",
+        "",
+        "Appuie sur R pour revenir au menu."
+    ]
+
+    y = 200
+    for line in instructions:
+        text = small_font.render(line, True, BLACK)
+        screen.blit(text, (screen.get_width() // 2 - text.get_width() // 2, y))
+        y += 50
 
 
 
@@ -416,10 +440,14 @@ while True:
             elif game_state == STATE_SCORE_SCREEN and event.key == pygame.K_r:
                 game_state = STATE_MAIN_MENU
 
+            # --- ÉCRAN DES INSTRUCTIONS---
+            elif game_state == STATE_INSTRUCTIONS and event.key == pygame.K_r:
+                game_state = STATE_MAIN_MENU
+
         # === CLICS DE SOURIS DANS LE MENU PRINCIPAL ===
         if game_state == STATE_MAIN_MENU and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = pygame.mouse.get_pos()
-            play_rect, score_rect, replay_rect = draw_main_menu()
+            play_rect, score_rect, replay_rect, instruction_rect = draw_main_menu()
 
             # --- Bouton PLAY ---
             if play_rect.collidepoint(mx, my):
@@ -433,7 +461,6 @@ while True:
                 SC.send_select_slot(0)  # ask PIC for slot 0 first
                 SC.send_request_best()  # PIC will reply CS:BEST,<n>
                 game_state = STATE_SCORE_SCREEN
-
 
             # --- Bouton REPLAY ---
             elif replay_rect.collidepoint(mx, my):
@@ -460,6 +487,11 @@ while True:
                             "scored": False
                         })
 
+            # --- Bouton INSTRUCTIONS ---
+            elif instruction_rect.collidepoint(mx, my):
+                game_state = STATE_INSTRUCTIONS
+
+        #
         # === ÉVÉNEMENTS DE SPAWN ===
         if event.type == SPAWNPIPE and game_state == STATE_GAME and game_active and not replay_mode:
             new_pipe = create_pipe()
@@ -558,6 +590,9 @@ while True:
 
     elif game_state == STATE_SCORE_SCREEN:
         draw_score_screen()
+
+    elif game_state == STATE_INSTRUCTIONS:
+        draw_instructions_screen()
 
     elif game_state == STATE_GAME:
         screen.fill(SKY)
