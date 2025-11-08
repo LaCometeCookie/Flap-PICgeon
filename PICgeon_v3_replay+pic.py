@@ -372,6 +372,12 @@ while True:
                     pipe_log.clear()
                     replay_start_time = pygame.time.get_ticks()
 
+                    # === NEW: Send Mode to PIC ===
+                    # Get the PIC's mode ID from our map
+                    pic_mode_to_send = pic_mode_map[game_mode]
+                    if pic_mode_to_send is not None:
+                        SC.send_mode_select(pic_mode_to_send)
+
             # --- EN JEU ---
             elif game_state == STATE_GAME and game_active:
                 if game_mode == 0 and event.key == pygame.K_SPACE:
