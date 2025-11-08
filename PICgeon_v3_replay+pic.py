@@ -74,6 +74,7 @@ recording = False             # True quand on enregistre une partie
 replay_pipe_index = 0
 replay_input_index = 0
 speed_multiplier = 1
+start_time = 0
 
 
 # === COULEURS ===
@@ -158,6 +159,23 @@ def draw_bird(x, y, vel):
     rotated_bird = pygame.transform.rotate(bird_img, bird_angle)
     rect = rotated_bird.get_rect(center=(x, y))
     screen.blit(rotated_bird, rect)
+
+
+def trigger_jump(now_ms):
+    """
+    Centralise le saut : met à jour bird_velocity et enregistre le timing si on est en enregistrement.
+    now_ms : valeur de pygame.time.get_ticks() au moment de l'entrée (ms).
+    """
+    global bird_velocity, input_log
+
+    # applique l'impulsion de saut
+    bird_velocity = flap_strength
+
+    # enregistre le timing (relatif à replay_start_time) uniquement si on est en enregistrement
+    if recording and not replay_mode:
+        # stockage en ms relatif au début de l'enregistrement/replay_start_time
+        input_log.append(now_ms - replay_start_time)
+
 
 
 def check_collision(pipes_list):
@@ -388,6 +406,7 @@ pygame.time.set_timer(SPAWNBG_FAR, 2800)
 SPAWNBG_NEAR = pygame.USEREVENT + 2
 pygame.time.set_timer(SPAWNBG_NEAR, 2000)
 
+
 # === BOUCLE PRINCIPALE ===
 while True:
     for event in pygame.event.get():
@@ -417,14 +436,14 @@ while True:
                     input_log.clear()
                     pipe_log.clear()
                     replay_start_time = pygame.time.get_ticks()
+                    replay_input_index = 0
 
-            # --- EN JEU ---
+            # --- EN JEU (clavier) ---
             elif game_state == STATE_GAME and game_active:
-                if game_mode == 0 and event.key == pygame.K_SPACE:
-                    bird_velocity = flap_strength
-                    # Enregistrement input si mode "record"
-                    if recording:
-                        input_log.append(pygame.time.get_ticks() - replay_start_time)
+                # si le mode est clavier (game_mode==0) ou même pour les autres modes on veut autoriser
+                if event.key == pygame.K_SPACE:
+                    # centralisé : trigger_jump gère bird_velocity et l'enregistrement si recording==True
+                    trigger_jump(pygame.time.get_ticks())
 
             # --- GAME OVER / RETOUR MENU ---
             elif game_state == STATE_GAME and not game_active and event.key == pygame.K_r:
@@ -455,17 +474,16 @@ while True:
 
             # --- Bouton SCORE ---
             elif score_rect.collidepoint(mx, my):
-                # start a simple 0..3 chain: Button, Encoder, IR, Ultrasound
                 score_lines[:] = [-1, -1, -1, -1]
                 score_fetch = 0
-                SC.send_select_slot(0)  # ask PIC for slot 0 first
-                SC.send_request_best()  # PIC will reply CS:BEST,<n>
+                SC.send_select_slot(0)
+                SC.send_request_best()
                 game_state = STATE_SCORE_SCREEN
 
             # --- Bouton REPLAY ---
             elif replay_rect.collidepoint(mx, my):
                 speed_multiplier = 2
-                game_mode = last_game_mode # Reprendre le dernier mode sélectionné
+                game_mode = last_game_mode
                 if pipe_log and input_log:
                     reset_game()
                     game_state = STATE_GAME
@@ -476,7 +494,7 @@ while True:
                     replay_input_index = 0
                     pipes.clear()
 
-                    # Construction des tuyaux fixes pour le replay
+                    # Construction des tuyaux fixes pour le replay (espacement constant)
                     replay_pipe_spacing = 200
                     x_start = WIDTH + 100
                     pipes.clear()
@@ -491,7 +509,6 @@ while True:
             elif instruction_rect.collidepoint(mx, my):
                 game_state = STATE_INSTRUCTIONS
 
-        #
         # === ÉVÉNEMENTS DE SPAWN ===
         if event.type == SPAWNPIPE and game_state == STATE_GAME and game_active and not replay_mode:
             new_pipe = create_pipe()
@@ -509,39 +526,43 @@ while True:
 
 
     # ==========================================================
-    # <<< UPDATED SERIAL PROTOCOL PARSER >>>
+    # <<< UPDATED SERIAL PROTOCOL PARSER (centralise les jump) >>>
     # ==========================================================
     line = SC.read_serial_input()
     if line:
-        # --- Handle Button Press ---
+        # --- Handle Button Press (PIC) ---
         if line == "CS:BTN,1":
             # Flap ONLY if a hardware mode (index > 0) is active
             if game_mode > 0 and game_state == STATE_GAME and game_active:
                 compteur += 1
                 print("Hardware Flap=", compteur)
-                bird_velocity = flap_strength
+                # centralisé : déclenche le jump et enregistre si recording==True
+                trigger_jump(pygame.time.get_ticks())
+
+        # --- Autres inputs hardware possibles (encoder / IR / US)
+        # Adapte les préfixes aux messages réels que ton PIC envoie si nécessaire
+        elif line.startswith("CS:ENC,") or line.startswith("CS:IR,") or line.startswith("CS:US,"):
+            if game_mode > 0 and game_state == STATE_GAME and game_active:
+                print("Hardware sensor triggered:", line)
+                trigger_jump(pygame.time.get_ticks())
 
         # --- Handle Best Score Report from PIC ---
         elif line.startswith("CS:BEST,"):
             try:
                 new_best = int(line.split(',')[1])
 
-                # If we are on the SCORE screen and fetching, fill one line then move on
                 if game_state == STATE_SCORE_SCREEN and 0 <= score_fetch <= 3:
                     score_lines[score_fetch] = new_best
                     score_fetch += 1
                     if score_fetch <= 3:
-                        # ask next slot (1=Encoder, 2=IR, 3=US)
                         SC.send_select_slot(score_fetch)
                         SC.send_request_best()
                 else:
-                    # legacy single value (just in case you show it elsewhere)
                     best_score = new_best
 
                 print(f"PIC reported best: {new_best}")
             except Exception as e:
                 print(f"Error parsing PIC command: {line} - {e}")
-
 
         # --- Handle Ready Signal ---
         elif line.startswith("CS:READY,"):
@@ -573,13 +594,18 @@ while True:
                 p["scored"] = True
                 SC.send_live_score(score)
 
-        # Gestion du replay (entrées enregistrées)
-        if replay_mode:
-            elapsed = (pygame.time.get_ticks() - replay_start_time) * 2
-            if replay_input_index < len(input_log) and elapsed >= input_log[replay_input_index]:
-                bird_velocity = flap_strength * 1.1
-                replay_input_index += 1
+        # Pendant une vraie partie on n'utilise pas la lecture des input_log
+        # (replay_mode == False), donc rien d'autre ici.
 
+    # === GESTION DU REPLAY ===
+    if replay_mode and game_state == STATE_GAME and game_active:
+        # on utilise le replay_start_time déjà initialisé lors du lancement du replay
+        elapsed = (pygame.time.get_ticks() - replay_start_time) * 2  # on garde le multiplicateur existant
+        # tant qu'il reste des inputs à rejouer
+        if replay_input_index < len(input_log) and elapsed >= input_log[replay_input_index]:
+            # déclenche le jump (ne sera pas enregistré car recording==False)
+            trigger_jump(pygame.time.get_ticks())
+            replay_input_index += 1
 
     # === DESSIN SELON ÉTAT ===
     if game_state == STATE_MAIN_MENU:
