@@ -59,7 +59,7 @@ game_active = True
 
 compteur = 0
 # SCORE screen (simple “line by line” fetch)
-score_lines = [None, None, None, None]   # Button, Encoder, IR, Ultrasound
+score_lines = [-1, -1, -1, -1]   # Button, Encoder, IR, Ultrasound
 score_fetch = -1                         # -1 = idle; 0..3 = which line we’re filling
 
 
@@ -346,7 +346,7 @@ def draw_score_screen():
         left = small_font.render(name, True, BLACK)
         screen.blit(left, (80, y))
         # show value or "..." while waiting
-        val_text = "..." if score_lines[i] is None else str(score_lines[i])
+        val_text = "..." if score_lines[i] == -1 else str(score_lines[i])
         right = small_font.render(val_text, True, BLACK)
         screen.blit(right, (WIDTH - 80 - right.get_width(), y))
         y += 40
@@ -428,7 +428,7 @@ while True:
             # --- Bouton SCORE ---
             elif score_rect.collidepoint(mx, my):
                 # start a simple 0..3 chain: Button, Encoder, IR, Ultrasound
-                score_lines[:] = [None, None, None, None]
+                score_lines[:] = [-1, -1, -1, -1]
                 score_fetch = 0
                 SC.send_select_slot(0)  # ask PIC for slot 0 first
                 SC.send_request_best()  # PIC will reply CS:BEST,<n>
