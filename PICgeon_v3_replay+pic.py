@@ -570,6 +570,28 @@ while True:
             SC.send_request_best()
 
 
+        elif line.startswith("CS:MENU,"):
+            print(f"PIC send somethings")
+            token = line.split(',')[1]
+            if game_state in (STATE_MAIN_MENU, STATE_MODE_SELECT):
+                if token == "UP":
+                    selected_mode = (selected_mode - 1) % len(menu_options)
+                elif token == "DOWN":
+                    selected_mode = (selected_mode + 1) % len(menu_options)
+                elif token == "OK":
+                    game_mode = selected_mode
+                    pic_mode = pic_mode_map[game_mode]
+                    if pic_mode is not None:
+                        SC.send_mode_select(pic_mode)
+                        SC.send_select_slot(pic_mode)
+                    reset_game()
+                    game_state = STATE_GAME
+                    recording = True
+                    replay_mode = False
+                    input_log.clear()
+                    pipe_log.clear()
+                    replay_start_time = pygame.time.get_ticks()
+
     # === LOGIQUE DU JEU ===
     if game_state == STATE_GAME and game_active:
         # Vitesse et gravité ajustées selon le mode
@@ -580,7 +602,7 @@ while True:
 
         bird_velocity += gravity * speed_multiplier
         bird_y += bird_velocity
-
+        SC.send_angle(int(bird_velocity))
         pipes = move_pipes(pipes)
         bg_far = move_background(bg_far, bg_far_speed)
         bg_near = move_background(bg_near, bg_near_speed)
