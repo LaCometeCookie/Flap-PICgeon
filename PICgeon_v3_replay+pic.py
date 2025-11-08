@@ -58,6 +58,10 @@ ground_y = HEIGHT - 80
 game_active = True
 
 compteur = 0
+# SCORE screen (simple “line by line” fetch)
+score_lines = [None, None, None, None]   # Button, Encoder, IR, Ultrasound
+score_fetch = -1                         # -1 = idle; 0..3 = which line we’re filling
+
 
 
 # === MÉMOIRE POUR LE MODE REPLAY ===
@@ -105,9 +109,9 @@ game_state = STATE_MAIN_MENU
 # === NEW: Menu and Mode Variables ===
 menu_options = [
     "Space Bar (Python)",
-    "Button (RE0)",
-    "Encoder (RE1)",
-    "IR Sensor (RE2)",
+    "Button (RA5)",
+    "Encoder (RE0)",
+    "IR Sensor (RE3)",
     "Ultrasound (RC2/RC3)"
 ]
 selected_mode = 0   # Index of the menu_options list
@@ -168,10 +172,12 @@ def check_collision(pipes_list):
         if circle_rect_collision(bird_center, bird_radius, top_rect) or \
                 circle_rect_collision(bird_center, bird_radius, bottom_rect):
             game_active = False
+            SC.send_game_over()
 
     # collision sol/plafond
     if bird_y + bird_radius >= ground_y or bird_y - bird_radius <= 0:
         game_active = False
+        SC.send_game_over()
 
 
 def circle_rect_collision(circle_center, circle_radius, rect):
@@ -331,11 +337,23 @@ def draw_mode_select():
 
 def draw_score_screen():
     screen.fill(SKY)
-    display_text = game_over_font.render(f"Best Score: {best_score}", True, BLACK)
-    screen.blit(display_text,
-                (WIDTH // 2 - display_text.get_width() // 2, HEIGHT // 2 - display_text.get_height() // 2))
-    small_text = small_font.render("Press R to return", True, BLACK)
-    screen.blit(small_text, (WIDTH // 2 - small_text.get_width() // 2, HEIGHT - 100))
+    title = game_over_font.render("Best per Mode", True, BLACK)
+    screen.blit(title, (WIDTH//2 - title.get_width()//2, 120))
+
+    labels = ["Button (RA5)", "Encoder (RE0)", "IR Sensor (RE3)", "Ultrasound (RC2/RC3)"]
+    y = 200
+    for i, name in enumerate(labels):
+        left = small_font.render(name, True, BLACK)
+        screen.blit(left, (80, y))
+        # show value or "..." while waiting
+        val_text = "..." if score_lines[i] is None else str(score_lines[i])
+        right = small_font.render(val_text, True, BLACK)
+        screen.blit(right, (WIDTH - 80 - right.get_width(), y))
+        y += 40
+
+    hint = small_font.render("Press R to return", True, BLACK)
+    screen.blit(hint, (WIDTH//2 - hint.get_width()//2, HEIGHT - 100))
+
 
 
 """ === ÉVÉNEMENTS CYCLIQUES === """
@@ -364,6 +382,10 @@ while True:
                     selected_mode = (selected_mode + 1) % len(menu_options)
                 elif event.key == pygame.K_SPACE:
                     game_mode = selected_mode
+                    pic_mode = pic_mode_map[game_mode]
+                    if pic_mode is not None:
+                        SC.send_mode_select(pic_mode)
+                        SC.send_select_slot(pic_mode)
                     reset_game()
                     game_state = STATE_GAME
                     recording = True  # Active l’enregistrement pour permettre le replay
@@ -371,12 +393,6 @@ while True:
                     input_log.clear()
                     pipe_log.clear()
                     replay_start_time = pygame.time.get_ticks()
-
-                    # === NEW: Send Mode to PIC ===
-                    # Get the PIC's mode ID from our map
-                    pic_mode_to_send = pic_mode_map[game_mode]
-                    if pic_mode_to_send is not None:
-                        SC.send_mode_select(pic_mode_to_send)
 
             # --- EN JEU ---
             elif game_state == STATE_GAME and game_active:
@@ -411,7 +427,13 @@ while True:
 
             # --- Bouton SCORE ---
             elif score_rect.collidepoint(mx, my):
+                # start a simple 0..3 chain: Button, Encoder, IR, Ultrasound
+                score_lines[:] = [None, None, None, None]
+                score_fetch = 0
+                SC.send_select_slot(0)  # ask PIC for slot 0 first
+                SC.send_request_best()  # PIC will reply CS:BEST,<n>
                 game_state = STATE_SCORE_SCREEN
+
 
             # --- Bouton REPLAY ---
             elif replay_rect.collidepoint(mx, my):
@@ -471,10 +493,23 @@ while True:
         elif line.startswith("CS:BEST,"):
             try:
                 new_best = int(line.split(',')[1])
-                best_score = new_best
-                print(f"PIC reported new best score: {best_score}")
+
+                # If we are on the SCORE screen and fetching, fill one line then move on
+                if game_state == STATE_SCORE_SCREEN and 0 <= score_fetch <= 3:
+                    score_lines[score_fetch] = new_best
+                    score_fetch += 1
+                    if score_fetch <= 3:
+                        # ask next slot (1=Encoder, 2=IR, 3=US)
+                        SC.send_select_slot(score_fetch)
+                        SC.send_request_best()
+                else:
+                    # legacy single value (just in case you show it elsewhere)
+                    best_score = new_best
+
+                print(f"PIC reported best: {new_best}")
             except Exception as e:
                 print(f"Error parsing PIC command: {line} - {e}")
+
 
         # --- Handle Ready Signal ---
         elif line.startswith("CS:READY,"):
