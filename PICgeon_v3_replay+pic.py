@@ -1,10 +1,10 @@
 import pygame
 import random
 import sys
-import serialComs as SC  # <<< USES OUR UPDATED SERIAL FILE
+import serialComs as SC
 
 
-# === 1. SERIAL CONNECTION (Happens FIRST) ===
+# === 1. SERIAL CONNECTION ===
 SC.connect_to_serial_port()
 
 # === 2. INITIALISATION ===
@@ -60,9 +60,9 @@ ground_y = HEIGHT - 80
 game_active = True
 
 compteur = 0
-# SCORE screen (simple “line by line” fetch)
+# SCORE screen
 score_lines = [-1, -1, -1, -1]   # Button, Encoder, IR, Ultrasound
-score_fetch = -1                         # -1 = idle; 0..3 = which line we’re filling
+score_fetch = -1                 # -1 = rien; 0..3 = la ligne en cours de fetch
 
 
 # === MÉMOIRE POUR LE MODE REPLAY ===
@@ -84,7 +84,6 @@ PIPE_BORDER_RED = (240, 80, 30)
 PIPE_BORDER_OUTLINE = (160, 30, 0)
 PIPE_RED = (220, 70, 30)
 PIPE_BORDER = (160, 30, 0)
-
 BIRD_BODY = (255, 255, 0)
 BIRD_BEAK = (255, 120, 0)
 BIRD_EYE = (255, 255, 255)
@@ -109,7 +108,7 @@ STATE_INSTRUCTIONS = "instructions"
 game_state = STATE_MAIN_MENU
 
 
-# === NEW: Menu and Mode Variables ===
+# === NOUVEAU V3.1 : Variables du Nouveau Menu avec Menu des Modes ===
 menu_options = [
     "Space Bar (Python)",
     "Button (RA5)",
@@ -118,11 +117,13 @@ menu_options = [
     "Ultrasound (RC2/RC3)"
 ]
 selected_mode = 0   # Index of the menu_options list
-game_mode = 0       # Stores the selected_mode *after* player hits Start
-last_game_mode = 0
+game_mode = 0       # IMPORTANT : Variable responsable du fonctionnement de tout le jeu :
+# stocke le mode de jeu dans lequel on est
+last_game_mode = 0  # Pareil mais en tampon
 
 # PIC Mode IDs: 0=Button, 1=Encoder, 2=IR, 3=Ultrasound
 pic_mode_map = [None, 0, 1, 2, 3]
+
 
 # === FONCTIONS DU JEU ===
 def create_pipe():
@@ -168,7 +169,7 @@ def trigger_jump(now_ms):
     """
     global bird_velocity, input_log
 
-    # applique l'impulsion de saut
+    # applique l'impulsion de saut ## À VOIR SI MODIF EN MODE REPLAY
     bird_velocity = flap_strength
 
     # enregistre le timing (relatif à replay_start_time) uniquement si on est en enregistrement
@@ -210,15 +211,20 @@ def circle_rect_collision(circle_center, circle_radius, rect):
 
 
 def draw_ground():
+    # Sol
     pygame.draw.rect(screen, GROUND, (0, ground_y, WIDTH, HEIGHT - ground_y))
 
 
 def display_score(current_score):
+    # Score
     text = font.render(f"Score: {current_score}", True, TEXT_COLOR)
     screen.blit(text, (10, 10))
 
 
 """ ~~~~~~~~~~~~~~~~~~~ FONCTIONS DE GESTION DU BACKGROUND ~~~~~~~~~~~~~~~~~~~~~ """
+# Génère le premier et 2e plan avec des blocs de fonds de manière aléatoire
+# far : montagnes, ville, nuages
+# near : prairie, arbres, montagnes, vide
 def create_background_block(layer="far"):
     if layer == "far":
         block_type = random.choice(["mountains", "city", "clouds", "mountain_tree", "clouds"])
@@ -366,7 +372,7 @@ def draw_score_screen():
     for i, name in enumerate(labels):
         left = small_font.render(name, True, BLACK)
         screen.blit(left, (80, y))
-        # show value or "..." while waiting
+        # affiche ... si on n'a pas encore reçu le score
         val_text = "..." if score_lines[i] == -1 else str(score_lines[i])
         right = small_font.render(val_text, True, BLACK)
         screen.blit(right, (WIDTH - 80 - right.get_width(), y))
@@ -395,7 +401,6 @@ def draw_instructions_screen():
         text = small_font.render(line, True, BLACK)
         screen.blit(text, (screen.get_width() // 2 - text.get_width() // 2, y))
         y += 50
-
 
 
 """ === ÉVÉNEMENTS CYCLIQUES === """
@@ -524,6 +529,48 @@ while True:
         if event.type == SPAWNBG_NEAR:
             bg_near.append(create_background_block("near"))
 
+    """ Pour toutes les lignes ci-dessous je ne réponds plus de rien c'est la faute à William si ça plante
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%%%#**%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%######*#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%##****###%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%#***++**###@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#***+++++*###@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%#*********##**@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%*+==+=++++*#%*#%%%@@@@@@@@@@@@@@%%*###%%*%
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%*+=====+++***#*#@@@@@@@@@@@@@@@@@@@@@%*#%#
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#====+=++=++**#%@@@@@@%@@@%@@@@@@@%@%**#%%%
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%*++===++=++*%%@@@@%%%#%@@@@@@%%%%##****#*#
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%=++++++**###%#%%#**+=+*#%@@@@@%@@#####+++*
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@+=+++*********+**---::=-=*@%#*##@@%%%%##***
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#==++****##+*+*==--::::::=++####*###%#######
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#=+++****#+*++------:::::::-***#*%**%#######
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#++**+++++-===--------:::::-+*=+*######*####
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@##*****+++=-=--=-------:::-::--=+*#*###%#####
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%###%%%%##**+===------:::::::::-=++*+++***#*#
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@####*#%@@@@@@+@#*==----::-:::-----===+===++**###
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@*#%#*+*%@@@@#+@#%#*==----:--:----=+++**#%@@#**#**
+    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@%##%%#***#@@@@@@%=##+===-----:::--=+#%@@%%@%%%%%%%%
+    @@@@@@@@@@@@@@@@@@#:.=@@@@@@@*#%%%##*++*#@@@%%%%*+====-----::--=*#%@@##@@@@%##%@
+    @@@@@@@@@@@@@@@@@=..::#@@@@@*###%#*+*++=======+++=====--------=*###%@@@@@@%#**+*
+    @@@@@@@@@@@@@@@@@::-:-=@@@@#+###%*+===---:..::-==-=====-------=*###*+=+@%#****##
+    @@@@@@@@@@@@@@@@#.::::-@@@@*+####*+==--:::::::---=======-=-----====+**#*******++
+    @@@@@@@@@@@+. .....:.:=@@@@*+*#***+===----::::::-=++==----=----::::--=++*****+=-
+    @@@@@@@@@+.......:-=-.-@@@@*++*#*+====----------=+++=======--::::::::-==+***+=--
+    @@@@@@@%.. .:::::-=+=-:*@@@%=+*++=======--------=+++==--====::::::::::--=+++==--
+    @@@@@@*. .::::::-==++=--%@@@*----:---=====------=+=+++======------::::--====----
+    @@@@@@..::-----==++++==-#@@@%---------=========-===++*+====------------=====----
+    @@@@@* .::::::-==+++====*@@@#-:::::----==========+++++++===------------==-------
+    @@@@@# .:::----==+++====-+@@%--:::::----=======+++++++++++=======----===-=====--
+    @@@@@@=.---======++++++==-::+=-:::::-:::--=======++===+++++=============--------
+    @@@@@@@-----=====+==++==-=-::.----:::::::---====----====================--------
+    @@@@@@@@#=:--============----:::-:::::::-----===-=====--=-=--========-----------
+    @@@@@@@@@@@-:---=====----------::--::-:::-----======================-========---
+    @@@@@@@@@@@#.:::-==-----------------------------=======================+++++++==
+    @@@@@@@@@@@@=..:--------------------------------===+=======-====++++++++*****+++
+    @@@@@@@@@@@@@.:::------------=-------=-:----------=-=========+++********########
+    @@@@@@@@@@@@@=.:::-------------------=---------------=========++***###%%@@@%%%%%
+    """
 
     # ==========================================================
     # <<< UPDATED SERIAL PROTOCOL PARSER (centralise les jump) >>>
@@ -546,7 +593,7 @@ while True:
                 print("Hardware sensor triggered:", line)
                 trigger_jump(pygame.time.get_ticks())
 
-        # --- Handle Best Score Report from PIC ---
+        # --- Gère le score avec la PIC ---
         elif line.startswith("CS:BEST,"):
             try:
                 new_best = int(line.split(',')[1])
@@ -564,12 +611,12 @@ while True:
             except Exception as e:
                 print(f"Error parsing PIC command: {line} - {e}")
 
-        # --- Handle Ready Signal ---
+        # --- Gère le Ready de la carte ---
         elif line.startswith("CS:READY,"):
             print(f"PIC Controller is ready! Protocol={line.split(',')[1]}")
             SC.send_request_best()
 
-
+        # --- Gère la navigation dans le menu avec la PIC ---
         elif line.startswith("CS:MENU,"):
             print(f"PIC send somethings")
             token = line.split(',')[1]
