@@ -44,7 +44,7 @@ pygame.mixer.music.load("Sprites/musique.mp3")
 # === CONSTANTES PHYSIQUES ===
 gravity = 0.25
 flap_strength = -6.5
-pipe_gap = 170
+pipe_gap = 190
 pipe_speed = 3
 bg_far_speed = 1
 bg_near_speed = 2
@@ -137,7 +137,10 @@ def create_pipe():
 
 def move_pipes(pipes_list):
     for p in pipes_list:
-        p["x"] -= pipe_speed * speed_multiplier
+        if speed_multiplier == 2:
+            p["x"] -= pipe_speed * 1.9
+        else:
+            p["x"] -= pipe_speed
     return [p for p in pipes_list if p["x"] > -PIPE_WIDTH]
 
 
@@ -174,7 +177,10 @@ def trigger_jump(now_ms):
     global bird_velocity, input_log
 
     # applique l'impulsion de saut ## À VOIR SI MODIF EN MODE REPLAY
-    bird_velocity = flap_strength
+    if speed_multiplier == 2:
+        bird_velocity = flap_strength * 1.15
+    else:
+        bird_velocity = flap_strength
 
     # enregistre le timing (relatif à replay_start_time) uniquement si on est en enregistrement
     if recording and not replay_mode:
@@ -654,7 +660,7 @@ while True:
         else:
             speed_multiplier = 1
 
-        bird_velocity += gravity * speed_multiplier
+        bird_velocity += gravity * speed_multiplier # speed_multiplier
         bird_y += bird_velocity
         SC.send_angle(int(bird_velocity))
         pipes = move_pipes(pipes)
