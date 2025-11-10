@@ -36,6 +36,10 @@ score_img = pygame.transform.scale(score_img, (104, 58))
 replay_img = pygame.transform.scale(replay_img, (104, 58))
 instruction_img = pygame.transform.scale(instruction_img, (104, 58))
 
+""" ~~~~~~~~~~~~~~~~~~~~~ Musique de fond ~~~~~~~~~~~~~~~~~~~~~ """
+pygame.mixer.init()
+pygame.mixer.music.load("Sprites/musique.mp3")
+
 """ ~~~~~~~~~~~~~~~~~~~~~ Définition des Variables ~~~~~~~~~~~~~~~~~~~~~ """
 # === CONSTANTES PHYSIQUES ===
 gravity = 0.25
@@ -193,11 +197,13 @@ def check_collision(pipes_list):
         if circle_rect_collision(bird_center, bird_radius, top_rect) or \
                 circle_rect_collision(bird_center, bird_radius, bottom_rect):
             game_active = False
+            pygame.mixer.music.stop()
             SC.send_game_over()
 
     # collision sol/plafond
     if bird_y + bird_radius >= ground_y or bird_y - bird_radius <= 0:
         game_active = False
+        pygame.mixer.music.stop()
         SC.send_game_over()
 
 
@@ -447,6 +453,7 @@ while True:
             elif game_state == STATE_GAME and game_active:
                 # si le mode est clavier (game_mode==0) ou même pour les autres modes on veut autoriser
                 if event.key == pygame.K_SPACE:
+                    pygame.mixer.music.play(-1)  # Joue en boucle
                     # centralisé : trigger_jump gère bird_velocity et l'enregistrement si recording==True
                     trigger_jump(pygame.time.get_ticks())
 
